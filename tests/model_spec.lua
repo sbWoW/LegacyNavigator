@@ -428,4 +428,26 @@ do
 	check(h.core.commands.lnav == "OnSlash" and h.core.commands.legacynav == "OnSlash", "slash commands not registered")
 end
 
+-- Settings can be switched off; goals are validated before they are stored.
+do
+	local h = fixture()
+	local core = h.core
+	core.db.profile.settings = { activities = { solo = true, dungeon = true, raid = false, pvp = false }, allowCharacterSwitch = true }
+	local s = core.db.profile.settings
+	core:OnSlash("set dungeon off"); eq(s.activities.dungeon, false, "set off did not disable")
+	core:OnSlash("set switch off"); eq(s.allowCharacterSwitch, false)
+	core:OnSlash("set raid on"); eq(s.activities.raid, true)
+	core:OnSlash("set switch maybe"); eq(s.allowCharacterSwitch, false, "bad value changed a setting")
+	s.activities.dungeon = true
+	core.catalogue = { achievements = { [1] = { activity = "dungeon" }, [2] = { activity = "unrated" }, [3] = { activity = "pvp" } } }
+	core.trees = { [1187] = { nodes = { [10] = { maxRanks = 2 } } } }
+	local function goal(text) core.db.profile.goal = nil; core:OnSlash("goal " .. text); return core.db.profile.goal end
+	check(goal("points 17") == nil, "17 points stored"); check(goal("points 0") == nil); check(goal("points 1.5") == nil)
+	eq(goal("points 16").need, 16); eq(goal("points 1").need, 1)
+	check(goal("challenge 99") == nil, "unknown challenge stored"); check(goal("challenge 2") == nil, "unrated stored")
+	check(goal("challenge 3") == nil, "disabled activity stored"); eq(goal("challenge 1").id, 1)
+	check(goal("node 11") == nil, "unknown node stored"); check(goal("node 10 3") == nil, "bad ranks stored")
+	check(goal("node 10 0") == nil); eq(goal("node 10 2").ranks, 2); eq(goal("node 10").nodeID, 10)
+end
+
 print("model_spec: all assertions passed")

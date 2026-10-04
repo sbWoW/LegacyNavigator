@@ -1,6 +1,6 @@
 ## Interface: 16001
 ## Title: Legacy Navigator
-## Notes: Legacy goal planner for WoW Forever. Etappe 1: core, provider, model, persistence (read-only).
+## Notes: Legacy goal planner for WoW Forever. Etappe 2: core, provider, model, planner (read-only).
 ## Author: sb
 ## Version: 0.1.0
 ## SavedVariables: LegacyNavigatorDiagDB, LegacyNavigatorDB
@@ -10,5 +10,6 @@ Diag.lua
 Locale.lua
 Definitions.lua
 Model.lua
+Planner.lua
 Provider.lua
 Core.lua

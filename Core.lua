@@ -1,5 +1,5 @@
 local addonName, ns = ...
-local L, def, Model, Provider = ns.L, ns.Definitions, ns.Model, ns.Provider
+local L, def, Model, Provider, Planner = ns.L, ns.Definitions, ns.Model, ns.Provider, ns.Planner
 
 local POLL_SECONDS, POLL_DEADLINE = 1, 30 -- poll every second, give up after 30 s of client time
 local CRITERIA_COALESCE = 1
@@ -9,6 +9,7 @@ local defaults = {
 	global = { schema = 1 },
 	profile = {
 		settings = { activities = def.defaultActivities, allowCharacterSwitch = true },
+		goal = nil, -- { type = "points", need = n } | { type = "challenge", id = n } | { type = "node", nodeID = n, ranks = n }
 		account = nil, -- Model.snapshot().account
 		characters = {}, -- ["Realm-Name"] = Model.snapshot().character
 	},
@@ -149,6 +150,7 @@ function Core:FinishScan()
 	local saved = Model.persist(self.db.profile, snap)
 	Model.applyScan(self.states, snap.incomplete, saved)
 	self.currentKey = raw.key
+	self.location = raw.location -- session only
 	if raw.stepError and not self.shownErrors.stepError then
 		self.shownErrors.stepError = true
 		self:Print("Scan step failed: " .. raw.stepError)
@@ -226,16 +228,158 @@ function Core:PrintStatus()
 	end
 end
 
+-- Planner ------------------------------------------------------------------------------------------
+
+local function missingText(missing)
+	return string.format(L["plan.missing." .. missing.kind], missing.n)
+end
+
+local function whyText(why)
+	local parts = {}
+	for _, key in ipairs(why or {}) do parts[#parts + 1] = L["plan.why." .. key] end
+	return table.concat(parts, ", ")
+end
+
+local function dataText(card)
+	local text = L["plan.data." .. card.dataState]
+	if card.dataState == "stale" then text = text .. " " .. stamp(card.capturedAt) end
+	return text
+end
+
+function Core:AchievementName(id)
+	local entry = self.catalogue and self.catalogue.achievements[id]
+	return entry and entry.name or string.format(L["plan.unnamed"], id)
+end
+
+function Core:BuildPlanInput()
+	local profile = self.db.profile
+	return {
+		definitions = def, catalogue = self.catalogue, account = profile.account, characters = profile.characters,
+		currentChar = self.currentKey or Provider.readCharacter().key, location = self.location, trees = self.trees,
+		settings = profile.settings, goal = profile.goal, states = self.states,
+	}
+end
+
+function Core:PrintPlan()
+	local ok, result = pcall(Planner.plan, self:BuildPlanInput())
+	if not ok then self:Print(string.format(L["Planner error: %s"], tostring(result))); return end
+	local goal = self.db.profile.goal
+	if not goal then self:Print(L["plan.header.none"])
+	elseif goal.type == "points" then self:Print(string.format(L["plan.header.points"], goal.need or 0))
+	elseif goal.type == "node" then
+		if result.goal.need then self:Print(string.format(L["plan.header.node"], goal.nodeID or 0, result.goal.need))
+		else self:Print(string.format(L["plan.header.nodeUnknown"], goal.nodeID or 0)) end
+	elseif goal.type == "challenge" then self:Print(string.format(L["plan.header.challenge"], goal.id or 0)) end
+	if result.goal.available and result.goal.remaining and result.goal.remaining > 0 then
+		self:Print(string.format(L["plan.goal.remaining"], result.goal.remaining, result.goal.available))
+	end
+	if result.status == "loading" then
+		self:Print(L["plan.status.loading"] .. " (" .. L["plan.reason." .. result.reason] .. ")")
+	elseif result.status == "invalid" then
+		local reason = L["plan.reason." .. result.reason]
+		if result.reasonArg then reason = string.format(reason, result.reasonArg) end
+		self:Print(L["plan.status.invalid"] .. " " .. reason)
+	elseif result.status == "none" then
+		self:Print(L["plan.status.none"] .. " " .. L["plan.reason." .. result.reason])
+	else
+		if result.status == "reachable" then self:Print(L["plan.status.reachable"]) end
+		if result.reason then self:Print(L["plan.reason." .. result.reason]) end
+		for i, card in ipairs(result.cards) do
+			if card.action == "spend" then
+				self:Print(string.format(L["plan.card.spend"], card.available or 0))
+			elseif card.action == "chooseGoal" then
+				self:Print(L["plan.card.chooseGoal"])
+			else
+				self:Print(string.format(L["plan.card.line"], i, self:AchievementName(card.achievementID), card.charKey,
+					L["plan.contribution." .. card.contribution], missingText(card.missing), whyText(card.why), dataText(card)))
+			end
+		end
+		for _, alt in ipairs(result.alternatives) do
+			self:Print(string.format(L["plan.card.alt"], self:AchievementName(alt.achievementID), alt.charKey,
+				missingText(alt.missing), dataText(alt)))
+		end
+	end
+	for _, opp in ipairs(result["local"]) do
+		self:Print(string.format(L["plan.card.local"], self:AchievementName(opp.achievementID), opp.charKey))
+	end
+end
+
+-- Reject what the planner would reject anyway, so an invalid goal is never stored. Returns reason key, arg.
+-- Unknown catalogue/trees are not an error here; the planner validates again.
+function Core:GoalProblem(goal)
+	if goal.type == "points" then
+		if goal.need % 1 ~= 0 or goal.need < 1 then return "needInvalid" end
+		if goal.need > def.maxPoints then return "needAbove", def.maxPoints end
+	elseif goal.type == "challenge" and self.catalogue then
+		local ach = self.catalogue.achievements[goal.id]
+		if not ach then return "challengeUnknown" end
+		if ach.activity == "unrated" then return "challengeUnrated" end
+		if self.db.profile.settings.activities[ach.activity] ~= true then return "challengeDisabled" end
+	elseif goal.type == "node" and self.trees then
+		local node, complete = nil, true
+		for _, tree in pairs(self.trees) do
+			if type(tree) ~= "table" or tree.incomplete then complete = false
+			elseif tree.nodes and tree.nodes[goal.nodeID] then node = tree.nodes[goal.nodeID] end
+		end
+		if not node then return complete and "nodeUnknown" or nil end
+		local ranks, maxRanks = goal.ranks, node.maxRanks or 1
+		if ranks ~= nil and (ranks % 1 ~= 0 or ranks < 1 or ranks > maxRanks) then return "nodeRanks" end
+	end
+end
+
+function Core:SetGoal(kind, a, b)
+	local profile, n, m = self.db.profile, tonumber(a), tonumber(b)
+	local goal
+	if kind == "clear" then
+		profile.goal = nil
+		self:Print(L["Goal cleared."])
+		return
+	elseif n and kind == "points" then goal = { type = "points", need = n }
+	elseif n and kind == "challenge" then goal = { type = "challenge", id = n }
+	elseif n and kind == "node" then goal = { type = "node", nodeID = n, ranks = m }
+	end
+	if goal then
+		local reason, arg = self:GoalProblem(goal)
+		if reason then
+			reason = L["plan.reason." .. reason]
+			self:Print(L["plan.status.invalid"] .. " " .. (arg and string.format(reason, arg) or reason))
+		else
+			profile.goal = goal
+			self:Print(L["Goal set."])
+		end
+	else
+		self:Print(L["Usage: /lnav goal points N | challenge ID | node ID [ranks] | clear"])
+	end
+end
+
+local SETTINGS = { pvp = true, dungeon = true, raid = true, switch = true }
+function Core:SetSetting(name, value)
+	local flag
+	if value == "on" then flag = true elseif value == "off" then flag = false end
+	if not SETTINGS[name or ""] or flag == nil then self:Print(L["Usage: /lnav set pvp|dungeon|raid|switch on|off"]); return end
+	local settings = self.db.profile.settings
+	if name == "switch" then settings.allowCharacterSwitch = flag else settings.activities[name] = flag end
+	self:Print(string.format(L["Setting %s: %s"], name, flag and L["on"] or L["off"]))
+end
+
 function Core:OnSlash(input)
 	local command = string.lower(string.match(input or "", "^%s*(%S*)") or "")
 	if command == "diag" then
 		if ns.Diag and ns.Diag.HandleSlash then ns.Diag.HandleSlash(input) end
 	elseif command == "status" or command == "" then
 		self:PrintStatus()
+	elseif command == "plan" then
+		self:PrintPlan()
+	elseif command == "goal" then
+		local _, kind, a, b = string.lower(input):match("^%s*(%S+)%s*(%S*)%s*(%S*)%s*(%S*)")
+		self:SetGoal(kind ~= "" and kind or nil, a ~= "" and a or nil, b ~= "" and b or nil)
+	elseif command == "set" then
+		local _, name, value = string.lower(input):match("^%s*(%S+)%s*(%S*)%s*(%S*)")
+		self:SetSetting(name ~= "" and name or nil, value ~= "" and value or nil)
 	elseif command == "refresh" then
 		self:Print(L["Refresh started."])
 		if self.pollTimer then self:CheckReady() elseif not Provider.isReady() then self:StartPoll() else self:StartScan() end
 	else
-		self:Print(L["Use /lnav status, /lnav refresh or /lnav diag."])
+		self:Print(L["Use /lnav status, /lnav refresh, /lnav plan, /lnav goal, /lnav set or /lnav diag."])
 	end
 end

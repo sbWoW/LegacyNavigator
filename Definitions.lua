@@ -20,6 +20,7 @@ ns.Definitions = {
 	pointsCurrencyID = 4225,
 	treeIDs = { 1187, 1188, 1189 },
 	pvpCategoryID = 15595, -- whole subtree is PvP
+	maxPoints = 16, -- GetMaxAvailableTraitCurrency(4225, true)
 	-- Product decision 2026-10-04.
 	defaultActivities = { solo = true, dungeon = true, raid = false, pvp = false },
 	classMilestones = classMilestones,
@@ -35,6 +36,6 @@ ns.Definitions = {
 		[15595] = "pvp", [15597] = "pvp", [15598] = "pvp", [15620] = "pvp",
 		[15425] = "ignore", -- "Do Not Display"
 	},
-	-- uiMapIDs per explorer zone; only these two are confirmed, the rest still to be verified.
-	zoneMaps = { Durotar = 1411, ["Tirisfal Glades"] = 1420 },
+	-- uiMapID per explorer helper achievement ([achievementID] = uiMapID); only these two are confirmed.
+	zoneMaps = { [728] = 1411, [768] = 1420 }, -- Explore Durotar, Explore Tirisfal Glades
 }
