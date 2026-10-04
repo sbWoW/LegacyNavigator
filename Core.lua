@@ -253,6 +253,10 @@ function Core:PLAYER_REGEN_ENABLED()
 		self.pendingScan = false
 		self:StartScan()
 	end
+	if self.pendingIntro then
+		self.pendingIntro = nil
+		self:OpenLegacyWindow()
+	end
 	self:RenderUI() -- clears the "updating after combat" line
 end
 
@@ -324,6 +328,10 @@ end
 -- R2/D3: the single replan path. A planner error keeps the last good result; the UI shows the error state.
 -- While data is loading the last good result stays on screen (with its date) instead of an empty card list.
 function Core:Replan(event)
+	local pending = self.pendingGoalPin
+	if pending then
+		if self.db.profile.goal == pending then self:PinForGoal(pending) else self.pendingGoalPin = nil end
+	end
 	local ok, result = pcall(function()
 		if self.forcePlanError then error("forced planner error (/lnav debug planerror)") end
 		return Planner.plan(self:BuildPlanInput())
@@ -344,9 +352,9 @@ function Core:Replan(event)
 	end
 	self:RenderUI(event)
 	local profile = self.db.profile
-	if ok and not profile.seenIntro and result.status ~= "loading" and not Provider.inCombat() then
+	if ok and not profile.seenIntro and result.status ~= "loading" then
 		profile.seenIntro = true -- first start only: the Legacy window opens once by itself (never in combat)
-		self:OpenLegacyWindow()
+		if Provider.inCombat() then self.pendingIntro = true else self:OpenLegacyWindow() end
 	end
 end
 
@@ -450,10 +458,11 @@ end
 -- open zone helper (missing.items[1]), everything else to the card's own achievement.
 function Core.JumpTarget(catalogue, card)
 	if type(card) ~= "table" or card.achievementID == nil then return nil end
-	local ach = catalogue and catalogue.achievements and catalogue.achievements[card.achievementID]
+	local all = catalogue and catalogue.achievements
+	local ach = all and all[card.achievementID]
 	local criteria = ach and ach.criteria
 	local first = card.missing and card.missing.items and card.missing.items[1]
-	if first and catalogue.achievements[first] and type(criteria) == "table" and #criteria > 0 then
+	if first and all and all[first] and type(criteria) == "table" and #criteria > 0 then
 		for _, criterion in ipairs(criteria) do if criterion.type ~= 8 then return card.achievementID end end
 		return first
 	end
@@ -539,6 +548,8 @@ function Core:GoalProblem(goal)
 		local ach = self.catalogue.achievements[goal.id]
 		if not ach then return "challengeUnknown" end
 		if ach.activity == "unrated" then return "challengeUnrated" end
+		local account = self.db.profile.account
+		if account and account.completed and account.completed[goal.id] then return "challengeCompleted" end
 		if self.db.profile.settings.activities[ach.activity] ~= true then return "challengeDisabled" end
 	elseif goal.type == "node" and self.trees then
 		local node, complete = nil, true
@@ -553,12 +564,15 @@ function Core:GoalProblem(goal)
 end
 
 -- D29: setting a goal also pins (never unpins). Challenge goal: that challenge; otherwise the first card of the new plan.
+-- A goal set while the plan is still loading stays pending and is resolved by the next non-loading Replan.
 function Core:PinForGoal(goal)
 	local profile, card = self.db.profile, nil
+	self.pendingGoalPin = nil
 	if goal.type == "challenge" then
 		card = { achievementID = goal.id, charKey = self.currentKey or Provider.readCharacter().key }
 	else
 		local ok, result = pcall(Planner.plan, self:BuildPlanInput())
+		if ok and result.status == "loading" then self.pendingGoalPin = goal end
 		for _, c in ipairs(ok and result.cards or {}) do
 			if c.action == "pin" then card = c; break end
 		end

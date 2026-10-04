@@ -34,7 +34,11 @@ function Hooks.GoalForCard(catalogue, settings, completed, id)
 		local ach = all[id]
 		if not (ach and ach.points == 0) then break end
 		local parent
-		for pid, candidate in pairs(all) do
+		local pids = {}
+		for pid in pairs(all) do pids[#pids + 1] = pid end
+		table.sort(pids) -- deterministic when several chains contain the helper
+		for _, pid in ipairs(pids) do
+			local candidate = all[pid]
 			for _, c in ipairs(candidate.criteria or {}) do
 				if c.type == 8 and c.assetID == id then parent = pid; break end
 			end
@@ -64,10 +68,14 @@ end
 
 local function addHint(button, key)
 	button:HookScript("OnEnter", function(self)
-		if GameTooltip:IsOwned(self) then
-			GameTooltip:AddLine(L[key], 0.7, 0.7, 0.7)
-			GameTooltip:Show()
+		if not GameTooltip:IsOwned(self) then -- Blizzard's challenge cards show no tooltip of their own
+			GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
 		end
+		GameTooltip:AddLine(L[key], 0.7, 0.7, 0.7)
+		GameTooltip:Show()
+	end)
+	button:HookScript("OnLeave", function(self)
+		if GameTooltip:IsOwned(self) then GameTooltip:Hide() end
 	end)
 end
 
@@ -105,12 +113,8 @@ local function each(iter, state, init, fn)
 end
 
 local function challengeScroll()
-	local frame = _G.LegacySystemFrame
-	if not frame then return nil end
-	for _, key in ipairs({ "ChallengesPage", "ChallengePage", "ChallengesFrame" }) do
-		local page = frame[key]
-		if type(page) == "table" then return page.ScrollBox or page end
-	end
+	local page = _G.LegacySystemFrame and _G.LegacySystemFrame.ChallengesPage
+	return page and page.DetailPane and page.DetailPane.ScrollBox
 end
 
 local function installChallenges()

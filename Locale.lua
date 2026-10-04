@@ -28,7 +28,6 @@ local deDE = {
 	["ui.goal.sub.levels"] = "%d Stufen fehlen", ["ui.goal.sub.levels.one"] = "%d Stufe fehlt",
 	["ui.goal.sub.unchecked"] = "Voraussetzungen ungeprüft", ["ui.goal.sub.reachable"] = "erreichbar – zum Legacy-Fenster",
 	["ui.goal.invalid"] = "Ziel ungültig: %s - /lnav goal clear",
-	["ui.pinned"] = "Angeheftet: %s", ["ui.pinned.done"] = "Angeheftet: %s - erledigt!",
 	["ui.pin"] = "Anheften", ["ui.pinnedBtn"] = "Angeheftet", ["ui.unpin"] = "Lösen",
 	["ui.status.loading"] = "Daten werden geladen ...", ["ui.status.loadingKept"] = "Daten werden geladen - letzter Stand vom %s",
 	["ui.status.planError"] = "Planer-Fehler - letzter gültiger Stand",
@@ -57,6 +56,7 @@ local deDE = {
 	["plan.reason.challengeUnknown"] = "Herausforderung nicht im Katalog",
 	["plan.reason.challengeUnrated"] = "Herausforderung nicht bewertet",
 	["plan.reason.challengeDisabled"] = "Aktivität der Herausforderung ist ausgeschaltet",
+	["plan.reason.challengeCompleted"] = "Herausforderung bereits abgeschlossen",
 	["plan.reason.needImpossible"] = "Bedarf ist mit den restlichen Legacy-Punkten nicht erreichbar",
 	["plan.reason.nodeRanks"] = "Ränge außerhalb des gültigen Bereichs",
 	["plan.reason.points"] = "Punktestand noch nicht gelesen",
@@ -100,7 +100,7 @@ local deDE = {
 	["ui.legacy"] = "Zum Legacy-Fenster",
 	["legacy.combat"] = "Nicht im Kampf",
 	["legacy.error"] = "Legacy-Fenster konnte nicht geöffnet werden: %s",
-	["jump.failed"] = "Herausforderung konnte nicht markiert werden - das Legacy-Fenster ist geöffnet.",
+	["jump.failed"] = "Herausforderung konnte nicht markiert werden - das Legacy-Fenster ist geöffnet. Evtl. durch Suche oder Filter ausgeblendet.",
 	["tracker.header"] = "Legacy", ["tracker.here"] = "Hier", ["tracker.done"] = "%s – erledigt!",
 	["tracker.next"] = "Nächster: %s · klicken zum Anheften", ["Tracker on."] = "Tracker an.", ["Tracker off."] = "Tracker aus.",
 	["Usage: /lnav tracker on|off"] = "Aufruf: /lnav tracker on|off|alpha 0-100",
@@ -110,6 +110,7 @@ local deDE = {
 	-- docked panel (Etappe 3b)
 	["panel.goal.change"] = "Ziel ändern", ["panel.goal.clear"] = "Ziel löschen",
 	["panel.tab.plan"] = "Plan", ["panel.tab.chars"] = "Charaktere", ["panel.tab.settings"] = "Einstellungen",
+		["panel.menu.missing"] = "Das Zielmenü braucht MenuUtil, das in diesem Client fehlt. Ziele per Mittelklick oder /lnav goal setzen.",
 		["panel.menu.none"] = "Kein Ziel (Orientierung)", ["panel.menu.points"] = "Punkte ausgeben…", ["panel.menu.pointsN"] = "%d Punkte",
 	["panel.menu.renown"] = "Renown-Stufe…", ["panel.menu.renownN"] = "Stufe %d", ["panel.menu.renownReward"] = "Stufe %d (Belohnung)",
 	["panel.menu.challenge"] = "Herausforderung…", ["panel.menu.node"] = "Vorteil… (ungeprüft)",
@@ -150,6 +151,7 @@ local enUS = {
 	["plan.reason.challengeUnknown"] = "challenge not in catalogue",
 	["plan.reason.challengeUnrated"] = "challenge is not rated",
 	["plan.reason.challengeDisabled"] = "the challenge's activity is switched off",
+	["plan.reason.challengeCompleted"] = "challenge already completed",
 	["plan.reason.needImpossible"] = "need cannot be reached with the remaining Legacy points",
 	["plan.reason.nodeRanks"] = "ranks outside the valid range",
 	["plan.reason.points"] = "point balance not read yet",
@@ -190,7 +192,6 @@ local enUS = {
 	["ui.goal.sub.levels"] = "%d levels missing", ["ui.goal.sub.levels.one"] = "%d level missing",
 	["ui.goal.sub.unchecked"] = "prerequisites unchecked", ["ui.goal.sub.reachable"] = "reachable – go to the Legacy window",
 	["ui.goal.invalid"] = "Goal invalid: %s - /lnav goal clear",
-	["ui.pinned"] = "Pinned: %s", ["ui.pinned.done"] = "Pinned: %s - done!",
 	["ui.pin"] = "Pin", ["ui.pinnedBtn"] = "Pinned", ["ui.unpin"] = "Unpin",
 	["ui.status.loading"] = "Loading data ...", ["ui.status.loadingKept"] = "Loading data - last state from %s",
 	["ui.status.planError"] = "Planner error - showing last valid state",
@@ -201,7 +202,7 @@ local enUS = {
 	["ui.legacy"] = "To Legacy window",
 	["legacy.combat"] = "Not in combat",
 	["legacy.error"] = "Could not open the Legacy window: %s",
-	["jump.failed"] = "Could not select the challenge - the Legacy window is open.",
+	["jump.failed"] = "Could not select the challenge - the Legacy window is open. It may be hidden by the search or a filter.",
 	["tracker.header"] = "Legacy", ["tracker.here"] = "Here", ["tracker.done"] = "%s – done!",
 	["tracker.next"] = "Next: %s · click to pin", ["Tracker on."] = "Tracker on.", ["Tracker off."] = "Tracker off.",
 	["Usage: /lnav tracker on|off"] = "Usage: /lnav tracker on|off|alpha 0-100",
@@ -211,6 +212,7 @@ local enUS = {
 	-- docked panel (Etappe 3b)
 	["panel.goal.change"] = "Change goal", ["panel.goal.clear"] = "Clear goal",
 	["panel.tab.plan"] = "Plan", ["panel.tab.chars"] = "Characters", ["panel.tab.settings"] = "Settings",
+		["panel.menu.missing"] = "The goal menu needs MenuUtil, which this client lacks. Set goals by middle-click or /lnav goal.",
 		["panel.menu.none"] = "No goal (orientation)", ["panel.menu.points"] = "Spend points…", ["panel.menu.pointsN"] = "%d points",
 	["panel.menu.renown"] = "Renown level…", ["panel.menu.renownN"] = "Level %d", ["panel.menu.renownReward"] = "Level %d (reward)",
 	["panel.menu.challenge"] = "Challenge…", ["panel.menu.node"] = "Perk… (unchecked)",
@@ -282,9 +284,9 @@ end
 
 function Text.goalSub(goal, result)
 	if not goal or not result or result.status == "invalid" or result.status == "loading" then return "" end
-	if result.status == "reachable" then return L2["ui.goal.sub.reachable"] end
 	local g, parts = result.goal or {}, {}
-	if g.remaining and g.remaining > 0 then parts[1] = plural(goal.type == "renown" and "ui.goal.sub.levels" or "ui.goal.sub.points", g.remaining) end
+	if result.status == "reachable" then parts[1] = L2["ui.goal.sub.reachable"] end
+	if g.remaining and g.remaining > 0 and result.status ~= "reachable" then parts[1] = plural(goal.type == "renown" and "ui.goal.sub.levels" or "ui.goal.sub.points", g.remaining) end
 	if goal.type == "node" then parts[#parts + 1] = L2["ui.goal.sub.unchecked"] end
 	return table.concat(parts, " · ")
 end

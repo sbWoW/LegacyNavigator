@@ -28,11 +28,11 @@ local function colorName(data, charKey)
 	return string.format("|cff%02x%02x%02x%s|r", byte(color.r), byte(color.g), byte(color.b), name)
 end
 
--- data: the Core render payload; event: the one-shot {kind = "completed"} (payload.completed or the kept copy).
+-- data: the Core render payload; event: the one-shot {kind = "completed"}, passed explicitly (Render keeps it in `state`;
+-- the payload's copy must not revive a finished completion).
 -- Returns nil (nothing to show) or { pinnedLine, localLines (max 2), completed }; every line is { text, card }.
 function Tracker.Content(data, event)
 	if not (data and data.profile) then return nil end
-	event = event or data.completed
 	local out, pinned, result = { localLines = {} }, data.profile.pinned, data.result
 	if pinned then
 		local parts = { achievementName(data, pinned.achievementID) }
@@ -163,10 +163,10 @@ function createFrame()
 	back:SetPoint("TOPLEFT", f, "TOPLEFT", -PAD, PAD); back:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", PAD, -PAD)
 	back:SetFrameLevel(math.max(f:GetFrameLevel() - 1, 0))
 	Style.Panel(back)
-	back.edges = {} -- 1-px accent border, shown while unlocked
+	back.edges = {} -- 1-px accent border, shown while unlocked; parented to f, not back: a skinned back is dimmed by SetAlpha
 	for i, p in ipairs({ { "TOPLEFT", "TOPRIGHT", nil, 1 }, { "BOTTOMLEFT", "BOTTOMRIGHT", nil, 1 }, { "TOPLEFT", "BOTTOMLEFT", 1 }, { "TOPRIGHT", "BOTTOMRIGHT", 1 } }) do
-		local tex = back:CreateTexture(nil, "OVERLAY")
-		tex:SetPoint(p[1]); tex:SetPoint(p[2])
+		local tex = f:CreateTexture(nil, "OVERLAY")
+		tex:SetPoint(p[1], back, p[1]); tex:SetPoint(p[2], back, p[2])
 		if p[3] then tex:SetWidth(p[3]) else tex:SetHeight(p[4]) end
 		tex:Hide()
 		back.edges[i] = tex
@@ -214,7 +214,7 @@ function Tracker.Refresh()
 	if state and state.phase == "next" and not (content and content.completed and content.completed.nextCard) then
 		-- nothing follows: drop the finished state and recompute, so an empty tracker hides
 		state = nil
-		content = ui.shown ~= false and Tracker.Content(payload) or nil
+		content = ui.shown ~= false and Tracker.Content(payload, nil) or nil
 	end
 	if not content and not (ui.shown ~= false and unlocked()) then frame:Hide(); return end
 	frame:Show()

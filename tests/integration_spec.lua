@@ -167,7 +167,7 @@ do
 	check(pc and pc.achievementID == 62382 and pc.missing and pc.missing.n == 3, "goal mode must keep pinnedCard of the non-goal pin")
 	local line = ns.Tracker.Content({ profile = db.profile, currentKey = "Realm-Alpha", catalogue = core.catalogue, result = core.lastResult }).pinnedLine
 	check(line.text:find("3", 1, true) and line.text ~= core:AchievementName(62382), "tracker pinned line shows missing text in goal mode")
-	check(line.progress == nil or line.progress.text:find("^%d+/%d+$"), "tracker pinned line passes progress through")
+	check(line.progress and line.progress.text == "0/3", "tracker pinned line passes progress through (0/3)")
 	core:SetGoal("clear")
 	eq(db.profile.pinned.achievementID, 62382, "clearing the goal keeps the pin")
 	db.profile.pinned = nil
@@ -313,20 +313,21 @@ do
 
 	d.completed = { kind = "completed", achievementID = 1, charKey = "Realm-Alpha" }
 	d.result.cards = { { action = "pin", achievementID = 1, charKey = "Realm-Alpha" }, { action = "pin", achievementID = 2, charKey = "Realm-Alpha" } }
-	c = T.Content(d)
+	c = T.Content(d, d.completed)
 	check(c and c.completed and c.completed.text:find("One", 1, true), "completed state")
+	eq((T.Content(d) or {}).completed, nil, "payload event alone must not revive a finished completion")
 	eq(c.completed.nextCard.achievementID, 2, "next skips the completed challenge")
 	check(c.completed.nextText:find("Two", 1, true), "next text")
 	eq(c.pinnedLine, nil, "no pin after completion")
 
 	d.result["local"] = { opp(2), opp(3) }
-	c = T.Content(d)
+	c = T.Content(d, d.completed)
 	eq(#c.localLines, 1, "next card excluded from local lines")
 	eq(c.localLines[1].card.achievementID, 3)
 
 	d.result.cards = { { action = "pin", achievementID = 1, charKey = "Realm-Alpha" } }
 	d.result["local"] = {}
-	c = T.Content(d)
+	c = T.Content(d, d.completed)
 	check(c and c.completed and c.completed.nextCard == nil, "no next card -> completed without nextCard")
 	d.completed = nil
 	eq(T.Content(d), nil, "event dropped, nothing left -> nil (tracker hides)")
@@ -345,6 +346,8 @@ do
 	eq(J(cat, { achievementID = 62382 }), 62382, "no missing items -> own id")
 	eq(J(cat, { achievementID = 62382, missing = { items = { 999 } } }), 62382, "unknown helper -> own id")
 	eq(J(cat, nil), nil, "no card")
+	eq(J(nil, { achievementID = 62382, missing = { items = { 768 } } }), 62382, "nil catalogue -> own id")
+	eq(J({}, { achievementID = 62382, missing = { items = { 768 } } }), 62382, "missing achievements table -> own id")
 
 	local P, fired, combat, queue, failed = ns.Provider, {}, false, {}, 0
 	InCombatLockdown = function() return combat end
@@ -368,6 +371,69 @@ do
 	check(ok == false and reason == "combat", "combat refuses"); run(); eq(#fired, n, "nothing fired in combat")
 	combat = false
 	EventRegistry, C_Timer = nil, nil
+end
+
+-- Final-review cases: pin.charKey, Experienced pin with Novice open, pending goal-pin, completed-challenge goal, GoalForCard order.
+do
+	local P = ns.Planner
+	local cat = { achievements = {
+		[10] = { id = 10, points = 1, activity = "solo", criteria = {} }, -- Novice Mage
+		[11] = { id = 11, points = 1, activity = "solo", criteria = {} }, -- Experienced Mage
+	} }
+	local defs = { defaultActivities = { solo = true }, zoneMaps = {},
+		classMilestones = { [10] = { class = "MAGE", level = 25 }, [11] = { class = "MAGE", level = 45 } } }
+	local function input(pin)
+		return { definitions = defs, catalogue = cat, account = { completed = {}, state = "confirmed" }, currentChar = "R-A", pinned = pin,
+			settings = { activities = { solo = true }, allowCharacterSwitch = true },
+			characters = {
+				["R-A"] = { state = "confirmed", classFile = "MAGE", level = 20, criteria = {}, capturedAt = 1 },
+				["R-B"] = { state = "confirmed", classFile = "MAGE", level = 40, criteria = {}, capturedAt = 1 },
+			} }
+	end
+	local r = P.plan(input({ achievementID = 11, charKey = "R-A" }))
+	local pc = r.pinnedCard
+	eq(pc.charKey, "R-A", "pinnedCard uses pin.charKey, not the best way")
+	eq(pc.missing.kind, "level"); eq(pc.missing.n, 25, "Experienced pinned while Novice open: level 20 vs 45")
+	r = P.plan(input({ achievementID = 11, charKey = "R-B" }))
+	eq(r.pinnedCard.charKey, "R-B", "twink pin keeps its character"); eq(r.pinnedCard.missing.n, 5, "twink: 45 - 40")
+	eq(r.pinnedCard.dataState, "stale", "other character's data is stale")
+
+	-- GoalProblem rejects an account-completed challenge
+	core.catalogue = { achievements = { [10] = { activity = "solo", points = 1 } } }
+	db.profile.settings = { activities = { solo = true } }
+	db.profile.account = { completed = { [10] = true } }
+	eq(core:GoalProblem({ type = "challenge", id = 10 }), "challengeCompleted", "completed challenge refused")
+	db.profile.account = { completed = {} }
+	eq(core:GoalProblem({ type = "challenge", id = 10 }), nil, "open challenge accepted")
+
+	-- pending goal pin: set while the plan is loading, resolved by the next non-loading Replan
+	assert(loadfile("Hooks.lua"))("LegacyNavigator", ns)
+	local H = ns.Hooks
+	local pins = {}
+	local realPlan, mode = P.plan, "loading"
+	P.plan = function(inp)
+		if mode == "loading" then return { status = "loading", reason = "points", cards = {}, alternatives = {}, ["local"] = {}, goal = {} } end
+		return { status = "ok", cards = { { action = "pin", achievementID = 10, charKey = "R-A" } }, alternatives = {}, ["local"] = {}, goal = {} }
+	end
+	db.profile.pinned, db.profile.goal = nil, nil
+	core:SetGoal("points", 3, nil, true)
+	eq(db.profile.pinned, nil, "loading: nothing pinned yet")
+	mode = "ok"
+	core:Replan()
+	eq(db.profile.pinned and db.profile.pinned.achievementID, 10, "pending goal-pin resolved on the next non-loading Replan")
+	P.plan = realPlan
+	db.profile.pinned, db.profile.goal = nil, nil
+
+	-- GoalForCard: deterministic parent when several chains contain the helper
+	local chains = { achievements = {
+		[5] = { points = 0, criteria = {} },
+		[9] = { points = 1, activity = "solo", criteria = { { type = 8, assetID = 5 } } },
+		[7] = { points = 1, activity = "solo", criteria = { { type = 8, assetID = 5 } } },
+	} }
+	for _ = 1, 20 do
+		local goal = H.GoalForCard(chains, { activities = { solo = true } }, {}, 5)
+		eq(goal.a, 7, "lowest parent id wins")
+	end
 end
 
 print("integration_spec: all assertions passed")

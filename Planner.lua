@@ -39,15 +39,16 @@ local function zoneMap(input, helperID) return input.definitions.zoneMaps[helper
 
 -- Remaining need of one achievement for one character: kind, n, items, ctype (boss|area|other), mapID. nil = not
 -- suitable or unknown.
-local function need(ach, char, input)
+local function need(ach, char, input, pinned)
 	local def, account = input.definitions, input.account
 	local milestone = def.classMilestones[ach.id]
 	if milestone then
 		if char.classFile ~= milestone.class or type(char.level) ~= "number" then return nil end
 		local n = milestone.level - char.level
 		if n <= 0 then return nil end
-		-- only the next open threshold of the class is a step (Experienced is noise while Novice is open)
-		for id, other in pairs(def.classMilestones) do
+		-- only the next open threshold of the class is a step (Experienced is noise while Novice is open);
+		-- a pinned challenge is the player's own choice and keeps its direct progress
+		for id, other in pairs(not pinned and def.classMilestones or {}) do
 			if other.class == milestone.class and other.level < milestone.level and input.catalogue.achievements[id]
 				and not accountDone(account, id) and char.level < other.level then
 				return nil
@@ -246,19 +247,11 @@ function Planner.plan(input)
 		elseif accountDone(account, pin.achievementID) then
 			result.pinnedCard = { achievementID = pin.achievementID, status = "done" }
 		else
-			local ways = {}
-			for _, key in ipairs(switch and sortedKeys(chars) or { cur }) do
-				local c = chars[key]
-				local n = type(c) == "table" and need(ach, c, input)
-				if n then
-					local way = makeWay(ach, key, n, input, cur)
-					way.isCur = key == cur
-					ways[#ways + 1] = way
-				end
-			end
-			table.sort(ways, cmpWays)
-			local way = ways[1]
-			result.pinnedCard = way and card(way, { why = whyFor(way, false, way.isCur) })
+			-- the character the player pinned with (its own snapshot), not the best way across characters
+			local key = chars[pin.charKey] and pin.charKey or cur
+			local n = type(chars[key]) == "table" and need(ach, chars[key], input, true)
+			local way = n and makeWay(ach, key, n, input, cur)
+			result.pinnedCard = way and card(way, { why = whyFor(way, false, key == cur) })
 				or { achievementID = pin.achievementID, status = "unknown" }
 		end
 	end

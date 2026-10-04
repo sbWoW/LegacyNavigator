@@ -5,7 +5,7 @@ local _, ns = ...
 local Style = {}
 ns.Style = Style
 
-Style.width, Style.pad, Style.gap = 420, 12, 8
+Style.pad, Style.gap = 12, 8
 Style.color = {
 	panel = { 0.05, 0.07, 0.09, 0.92 }, border = { 1, 1, 1, 0.14 }, accent = { 0.05, 0.82, 0.62 },
 	title = { 0.62, 0.66, 0.70 }, text = { 0.93, 0.95, 0.97 }, sub = { 0.64, 0.68, 0.72 }, warn = { 0.96, 0.74, 0.30 },
@@ -28,9 +28,6 @@ local function apply(kind, obj)
 		obj._lnBg:Hide()
 		if obj._lnHover then obj._lnHover:Hide() end
 		skin.Button(obj)
-	elseif kind == "close" then
-		if obj._lnLabel then obj._lnLabel:Hide() end
-		skin.CloseButton(obj)
 	elseif kind == "font" then
 		skin.Font(obj)
 	end
@@ -144,24 +141,6 @@ function Style.Button(parent, text)
 	end
 	button:SetLabel(text or "")
 	track("button", button)
-	return button
-end
-
--- Once the skin callback has run, the Blizzard close template is what S.CloseButton expects; otherwise a flat "x".
--- ponytail: a close button created before the callback fires stays flat (the skin then paints over it via apply()).
-function Style.CloseButton(parent)
-	local skinned = skin ~= nil
-	local button = CreateFrame("Button", nil, parent, skinned and "UIPanelCloseButton" or nil)
-	button:SetSize(20, 20)
-	if not skinned then
-		local hover = button:CreateTexture(nil, "HIGHLIGHT")
-		hover:SetAllPoints(); hover:SetColorTexture(rgba(C.hover))
-		button._lnLabel = button:CreateFontString(nil, "OVERLAY")
-		button._lnLabel:SetPoint("CENTER")
-		Style.Font(button._lnLabel, "row", "title")
-		button._lnLabel:SetText("x")
-	end
-	track("close", button)
 	return button
 end
 

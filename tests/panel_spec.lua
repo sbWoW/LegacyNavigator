@@ -38,7 +38,6 @@ check(not P.ProgressModel(nil, { status = "ok", goal = {} }).bar, "no goal")
 check(not P.ProgressModel({ type = "points", need = 99 }, { status = "invalid", goal = {}, reason = "needAbove" }).bar, "invalid: no bar")
 check(not P.ProgressModel({ type = "points", need = 5 }, nil).bar, "no result")
 
-check(P.GoalClearVisible({ type = "points", need = 1 }) == true and P.GoalClearVisible(nil) == false, "GoalClearVisible")
 
 -- GoalMenuModel
 local function ach(name, points, activity, cat) return { name = name, points = points, activity = activity, categoryID = cat } end

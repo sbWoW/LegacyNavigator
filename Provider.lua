@@ -263,12 +263,21 @@ local function selectChallenge(achievementID, categoryID)
 	if categoryID == nil then error("no category") end
 	EventRegistry:TriggerEvent("Legacy.OpenToChallengeCategory", categoryID)
 	EventRegistry:TriggerEvent("Legacy.SelectChallenge", achievementID)
+	-- The detail pane lists only what passes its search/filter; verify the challenge is in it (skipped if the layout differs).
+	local page = LegacySystemFrame and LegacySystemFrame.ChallengesPage
+	local box = page and page.DetailPane and page.DetailPane.ScrollBox
+	local data = box and box.GetDataProvider and box:GetDataProvider()
+	if data and data.FindElementDataByPredicate
+		and not data:FindElementDataByPredicate(function(e) return type(e) == "table" and e.id == achievementID end) then
+		error("challenge not listed")
+	end
 end
 
 function Provider.showChallenge(achievementID, categoryID, onFail)
 	local ok, reason, detail = Provider.openLegacyWindow()
 	if not ok then return ok, reason, detail end
 	local function attempt(n)
+		if Provider.inCombat() then return end -- the window opened before combat; the selection is dropped silently
 		if pcall(selectChallenge, achievementID, categoryID) then return end
 		if n < 2 and C_Timer and C_Timer.After then return C_Timer.After(0, function() attempt(n + 1) end) end
 		if onFail then pcall(onFail) end

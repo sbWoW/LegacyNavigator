@@ -55,7 +55,8 @@ eq(de.goalSub(node, { status = "ok", goal = { remaining = 1 } }), "1 Punkt fehlt
 eq(de.goalSub(node, { status = "ok", goal = { remaining = 3 } }), "3 Punkte fehlen · Voraussetzungen ungeprüft")
 eq(en.goalSub(node, { status = "ok", goal = { remaining = 1 } }), "1 point missing · prerequisites unchecked")
 eq(de.goalSub({ type = "renown" }, { status = "ok", goal = { remaining = 2 } }), "2 Stufen fehlen")
-eq(de.goalSub(node, { status = "reachable", goal = {} }), "erreichbar – zum Legacy-Fenster")
+eq(de.goalSub(node, { status = "reachable", goal = {} }), "erreichbar – zum Legacy-Fenster · Voraussetzungen ungeprüft")
+eq(de.goalSub({ type = "points" }, { status = "reachable", goal = {} }), "erreichbar – zum Legacy-Fenster")
 eq(de.goalSub({ type = "challenge" }, { status = "ok", goal = {} }), ""); eq(de.goalSub(nil, {}), "")
 
 -- data: confirmed says nothing, stale carries the date (2026-10-04 12:00 UTC is the 4th in any timezone)
@@ -108,7 +109,7 @@ for _, key in ipairs({ "panel.tab.plan", "panel.tab.chars", "panel.tab.settings"
 end
 -- dynamically built keys in Core ("plan.reason." .. x, L[self.states[domain]]) are covered by these lists
 for _, key in ipairs({ "account", "character", "catalogue", "treesMissing", "needInvalid", "needAbove", "challengeUnknown",
-	"challengeUnrated", "challengeDisabled", "needImpossible", "nodeRanks", "points", "renown", "nodeUnknown", "nodeOwned",
+	"challengeUnrated", "challengeDisabled", "challengeCompleted", "needImpossible", "nodeRanks", "points", "renown", "nodeUnknown", "nodeOwned",
 	"goalType", "noStep", "noStepOnCurrent" }) do
 	if loc.enUS["plan.reason." .. key] == nil or loc.deDE["plan.reason." .. key] == nil then error("reason key " .. key) end
 end

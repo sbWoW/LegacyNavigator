@@ -11,15 +11,13 @@ ns.Panel = Panel
 local HOST_NAME, HOST_ADDON = "LegacySystemFrame", "Blizzard_LegacySystem"
 local WIDTH, PAD, GAP, GAP_HOST = 320, Style.pad, Style.gap, 4
 local INNER = WIDTH - 2 * PAD
-local ICON, ICON_GAP, MAX_ROWS, MAX_CHARS, POLL = 24, 6, 3, 10, 0.25
+local ICON, ICON_GAP, MAX_ROWS, MAX_CHARS, POLL = 24, 6, 3, 10, 1
 local MENU_SCROLL = 400
 local SETTING_KEYS = { "dungeon", "raid", "pvp", "switch", "tracker", "minimap" }
 local core, frame, payload, driver
 local tab = "plan"
 
 -- Pure helpers ---------------------------------------------------------------------------------------
-
-function Panel.GoalClearVisible(goal) return goal ~= nil end
 
 -- Bar only with a reliable denominator: points (available / need) and renown (renown / level).
 -- Node goals are a minimum need with unchecked prerequisites: text only. Everything else: no extra line.
@@ -154,8 +152,15 @@ local function openGoalMenu(owner)
 	if not core then return end
 	local profile = core.db.profile
 	local model = Panel.GoalMenuModel(core.catalogue, profile.settings, core.trees, profile.account and profile.account.completed)
-	local function pick(action) core:SetGoal(action.kind, action.a, action.b) end
-	if MenuUtil and MenuUtil.CreateContextMenu then
+	local function pick(action)
+		if action.kind == "challenge" then core:SetChallengeGoal(action.a) -- quiet, same message as the middle-click
+		else core:SetGoal(action.kind, action.a, action.b) end
+	end
+	if not (MenuUtil and MenuUtil.CreateContextMenu) then
+		if not Panel.menuHinted then Panel.menuHinted = true; core:Print(L["panel.menu.missing"]) end
+		return
+	end
+	do
 		MenuUtil.CreateContextMenu(owner, function(_, root)
 			local function fill(parent, entries)
 				for _, entry in ipairs(entries) do
@@ -170,25 +175,6 @@ local function openGoalMenu(owner)
 			end
 			fill(root, model)
 		end)
-	elseif UIDropDownMenu_Initialize and ToggleDropDownMenu and UIDropDownMenu_AddButton then
-		-- ponytail: the fallback has no scrolling; long challenge/node lists need MenuUtil (modern client).
-		local menu = Panel.dropdown or CreateFrame("Frame", "LegacyNavigatorGoalMenu", UIParent, "UIDropDownMenuTemplate")
-		Panel.dropdown = menu
-		local function convert(entries)
-			local list = {}
-			for _, entry in ipairs(entries) do
-				local info = { text = entry.text, notCheckable = true }
-				if entry.children then info.hasArrow, info.menuList = true, convert(entry.children)
-				else info.func = function() CloseDropDownMenus(); pick(entry.action) end end
-				list[#list + 1] = info
-			end
-			return list
-		end
-		local root = convert(model)
-		UIDropDownMenu_Initialize(menu, function(_, level, menuList)
-			for _, info in ipairs(level == 1 and root or menuList or {}) do UIDropDownMenu_AddButton(info, level) end
-		end, "MENU")
-		ToggleDropDownMenu(1, nil, menu, owner, 0, 0)
 	end
 end
 
@@ -473,13 +459,17 @@ local function createFrame()
 end
 
 function Panel.Refresh()
-	if not (frame and frame:IsShown() and payload) then return end
+	if not (frame and frame:IsShown()) then return end
+	if not payload then -- first show before any render: ask Core, whose payload carries the loading status
+		if core then core:RenderUI() end
+		return
+	end
 	local f, y = frame, -10
 	place(f.title, f, PAD, y)
 	y = y - 22
 	f.goal:SetText(ns.UI.GoalText() or "")
 	place(f.clear, f, WIDTH - PAD - 20, y)
-	f.clear:SetShown(Panel.GoalClearVisible(payload.profile.goal))
+	f.clear:SetShown(payload.profile.goal ~= nil)
 	f.goal:ClearAllPoints()
 	f.goal:SetPoint("TOPLEFT", f, "TOPLEFT", PAD, y)
 	f.goal:SetPoint("TOPRIGHT", f.clear, "TOPLEFT", -4, 0) -- wraps left of the button
@@ -552,15 +542,18 @@ local function dock(h)
 	local right = h:GetRight()
 	local side = right and Panel.DockSide(right * ratio, tabWidth * ratio, WIDTH, UIParent:GetRight()) or "right"
 	frame:ClearAllPoints()
-	if side == "right" then frame:SetPoint("TOPLEFT", h, "TOPRIGHT", GAP_HOST + tabWidth, 0)
-	else frame:SetPoint("TOPRIGHT", h, "TOPLEFT", -GAP_HOST, 0) end
+	-- anchor offsets are in the panel's scale (UIParent), the gap and the tabs in the host's: convert with the ratio
+	if side == "right" then frame:SetPoint("TOPLEFT", h, "TOPRIGHT", (GAP_HOST + tabWidth) * ratio, 0)
+	else frame:SetPoint("TOPRIGHT", h, "TOPLEFT", -GAP_HOST * ratio, 0) end
 	frame:SetHeight(h:GetHeight() * ratio)
 	frame:SetFrameStrata(h:GetFrameStrata())
+	frame:SetFrameLevel(h:GetFrameLevel() + 1)
 end
 
--- Show/hide follows the host. Blizzard fires no callback on LegacySystemFrame show (its OnShow only plays a sound and
--- refreshes currency; checked in the forever UI source), so we poll IsShown on our own frame, only once the host exists.
--- ponytail: a 0.25 s poll on a tiny frame; swap for an EventRegistry callback if Blizzard ever adds a show event.
+-- Show/hide follows the host. Primary trigger: the EventRegistry callbacks UIParentPanelManager.ShowUIPanel / HideUIPanel
+-- (fired by ShowUIPanel/HideUIPanel with the frame; checked in the forever UI source). A plain frame:Show() bypasses
+-- them, so a 1 s poll on our own frame runs as a safety net, only while the host is shown.
+local driverPoll
 function Panel.Sync()
 	local h = host()
 	if not (core and h) then return end
@@ -571,25 +564,32 @@ function Panel.Sync()
 			dock(h)
 			frame:Show()
 			if ns.Hooks and ns.Hooks.Rescan then pcall(ns.Hooks.Rescan) end -- pages build lazily; attach to new buttons
-			if payload then Panel.Refresh() else core:RenderUI() end
+			Panel.Refresh()
+		else
+			dock(h) -- the host may have been pushed or rescaled
 		end
 	elseif frame and frame:IsShown() then
 		frame:Hide()
 	end
+	if driver then driver:SetScript("OnUpdate", want and driverPoll or nil) end
 end
 
-local function watch()
-	if not driver or driver.watching or not host() then return end
-	driver.watching = true
-	local elapsed = 0
-	driver:SetScript("OnUpdate", function(_, dt)
-		elapsed = elapsed + dt
-		if elapsed < POLL then return end
-		elapsed = 0
-		local ok, err = pcall(Panel.Sync)
-		if not ok and core then core:CallUI(error, err) end
-	end)
-	Panel.Sync()
+local function guarded(fn, ...)
+	local ok, err = pcall(fn, ...)
+	if not ok and core then core:CallUI(error, err) end
+end
+
+local elapsed = 0
+function driverPoll(_, dt)
+	elapsed = elapsed + dt
+	if elapsed < POLL then return end
+	elapsed = 0
+	guarded(Panel.Sync)
+end
+
+-- Any panel shown or hidden may push or rescale the host: Sync follows the host and re-docks.
+local function onPanelEvent(_, f)
+	if f == host() or (frame and frame:IsShown()) then guarded(Panel.Sync) end
 end
 
 -- Blizzard options page: a short text and a button that opens the Legacy window (where the panel lives).
@@ -617,9 +617,14 @@ end
 
 function Panel.Init(coreObject)
 	core = coreObject
+	if driver then return end -- idempotent: one driver, one set of callbacks
 	pcall(registerOptions) -- the panel works without an options page
 	driver = CreateFrame("Frame")
 	driver:RegisterEvent("ADDON_LOADED")
-	driver:SetScript("OnEvent", function(_, _, name) if name == HOST_ADDON then watch() end end)
-	watch() -- the host may already be loaded
+	driver:SetScript("OnEvent", function(_, _, name) if name == HOST_ADDON then guarded(Panel.Sync) end end)
+	if EventRegistry and EventRegistry.RegisterCallback then
+		EventRegistry:RegisterCallback("UIParentPanelManager.ShowUIPanel", onPanelEvent, Panel)
+		EventRegistry:RegisterCallback("UIParentPanelManager.HideUIPanel", onPanelEvent, Panel)
+	end
+	guarded(Panel.Sync) -- the host may already be loaded
 end

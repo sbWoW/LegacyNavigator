@@ -128,7 +128,6 @@ end
 UI.ShowTooltip = showTooltip -- shared with the tracker rows
 -- Shared with the docked panel; they read the payload UI.Render stored last (Core renders UI before Panel).
 function UI.GoalText() return payload and goalText() end
-function UI.GoalSub() return payload and Text.goalSub(payload.profile.goal, payload.result) or "" end
 function UI.StatusText() return payload and statusText() end
 UI.ColorName, UI.AchievementName = colorName, achievementName
 
@@ -142,14 +141,6 @@ local function legacyOnEnter(button)
 end
 
 local function legacyOnLeave(button) if GameTooltip:IsOwned(button) then GameTooltip:Hide() end end
-
--- Wires the click path once; legacyState re-evaluates the look on every refresh.
-local function legacySetup(button)
-	button:SetScript("OnClick", function() if core then core:OpenLegacyWindow() end end)
-	button:SetScript("OnEnter", legacyOnEnter)
-	button:SetScript("OnLeave", legacyOnLeave)
-	button:SetScript("OnHide", legacyOnLeave)
-end
 
 local function legacyState(button)
 	local reason = core and core:LegacyBlock()
