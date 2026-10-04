@@ -1,0 +1,11 @@
+package-as: LegacyNavigator
+
+ignore:
+  - docs
+  - tests
+  - Legacy-Navigator-Konzept-v0.1.md
+  - ONPREM-HANDOFF.md
+  - STARTPROMPT.txt
+  - README.txt
+  - .gitignore
+  - .pkgmeta

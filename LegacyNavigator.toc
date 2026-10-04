@@ -1,0 +1,14 @@
+## Interface: 16001
+## Title: Legacy Navigator
+## Notes: Legacy goal planner for WoW Forever. Etappe 1: core, provider, model, persistence (read-only).
+## Author: sb
+## Version: 0.1.0
+## SavedVariables: LegacyNavigatorDiagDB, LegacyNavigatorDB
+## IconTexture: Interface\Icons\INV_Misc_Map_01
+embeds.xml
+Diag.lua
+Locale.lua
+Definitions.lua
+Model.lua
+Provider.lua
+Core.lua
