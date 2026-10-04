@@ -16,4 +16,5 @@ Provider.lua
 Style.lua
 UI.lua
 Tracker.lua
+Panel.lua
 Core.lua

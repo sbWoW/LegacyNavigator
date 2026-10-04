@@ -75,12 +75,20 @@ for key in src:gmatch('L%["([^"]-)"%]') do
 	end
 end
 local ui = ""
-for _, name in ipairs({ "UI.lua", "Tracker.lua" }) do local f2 = assert(io.open(name)); ui = ui .. f2:read("*a"); f2:close() end
+for _, name in ipairs({ "UI.lua", "Tracker.lua", "Panel.lua" }) do local f2 = assert(io.open(name)); ui = ui .. f2:read("*a"); f2:close() end
 for key in ui:gmatch('L%["([^"]-)"%]') do
 	if loc.enUS[key] == nil or loc.deDE[key] == nil then error("UI uses text missing in enUS/deDE: " .. key) end
 end
 for _, key in ipairs({ "ui.pin", "ui.pinnedBtn", "ui.here", "ui.legacy", "legacy.combat", "legacy.error", "tracker.header", "tracker.here", "tracker.done", "tracker.next" }) do
 	if loc.enUS[key] == nil or loc.deDE[key] == nil then error("UI button key " .. key) end
+end
+-- Panel.lua builds some keys dynamically ("panel.set." .. key, tabs from a table)
+for _, key in ipairs({ "dungeon", "raid", "pvp", "switch", "tracker", "minimap" }) do
+	if loc.enUS["panel.set." .. key] == nil or loc.deDE["panel.set." .. key] == nil then error("panel.set key " .. key) end
+end
+for _, key in ipairs({ "panel.tab.plan", "panel.tab.chars", "panel.tab.settings", "panel.menu.none", "panel.menu.points", "panel.menu.renown",
+	"panel.menu.challenge", "panel.menu.node", "panel.set.lock", "panel.set.unlock", "panel.set.reset", "panel.goal.change" }) do
+	if loc.enUS[key] == nil or loc.deDE[key] == nil then error("panel key " .. key) end
 end
 -- dynamically built keys in Core ("plan.reason." .. x, L[self.states[domain]]) are covered by these lists
 for _, key in ipairs({ "account", "character", "catalogue", "treesMissing", "needInvalid", "needAbove", "challengeUnknown",

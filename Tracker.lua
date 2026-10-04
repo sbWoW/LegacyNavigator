@@ -53,9 +53,16 @@ function Tracker.Content(data, event)
 		}
 	end
 	local pinnedID = pinned and pinned.achievementID
+	local nextCard
+	if event and event.kind == "completed" then
+		for _, card in ipairs(result and result.cards or {}) do
+			if card.action == "pin" and card.achievementID ~= event.achievementID then nextCard = card; break end
+		end
+	end
+	local nextID = nextCard and nextCard.achievementID
 	for _, opp in ipairs(result and result["local"] or {}) do
 		if #out.localLines >= MAX_LOCAL then break end
-		if opp.achievementID ~= pinnedID and (opp.charKey == nil or opp.charKey == data.currentKey) then
+		if opp.achievementID ~= pinnedID and opp.achievementID ~= nextID and (opp.charKey == nil or opp.charKey == data.currentKey) then
 			local text = achievementName(data, opp.achievementID)
 			if opp.missing then text = text .. " · " .. Text.missing(opp) end
 			out.localLines[#out.localLines + 1] = { text = text, card = opp }
@@ -64,12 +71,9 @@ function Tracker.Content(data, event)
 	if event and event.kind == "completed" then
 		local name = achievementName(data, event.achievementID)
 		out.completed = { text = string.format(L["tracker.done"], name), charKey = event.charKey }
-		for _, card in ipairs(result and result.cards or {}) do
-			if card.action == "pin" and card.achievementID ~= event.achievementID then
-				out.completed.nextCard = card
-				out.completed.nextText = string.format(L["tracker.next"], achievementName(data, card.achievementID))
-				break
-			end
+		if nextCard then
+			out.completed.nextCard = nextCard
+			out.completed.nextText = string.format(L["tracker.next"], achievementName(data, nextCard.achievementID))
 		end
 	end
 	if not (out.pinnedLine or out.completed or #out.localLines > 0) then return nil end
@@ -102,6 +106,21 @@ end
 
 local function unlocked() return core and core.db.profile.ui.tracker.locked == false end
 
+-- The tracker container has a fixed EditMode height on this client, so anchor to the last shown module instead.
+-- Our own call only: no coordinates read, nothing hooked or modified; the widget tracker is never touched.
+local SKIP = { ScenarioObjectiveTracker = true, UIWidgetObjectiveTracker = true }
+local function lowestModule()
+	local otf = ObjectiveTrackerFrame
+	if type(otf) ~= "table" then return nil end
+	local list = otf.modules or otf.MODULES
+	if type(list) ~= "table" then return nil end
+	local found
+	for _, m in ipairs(list) do
+		if type(m) == "table" and m.GetName and not SKIP[m:GetName() or ""] and m.IsShown and m:IsShown() then found = m end
+	end
+	return found
+end
+
 -- R3/D4: decided here and nowhere else (our Render, PLAYER_ENTERING_WORLD, lock/reset); never from a Blizzard script.
 function Tracker.Anchor()
 	if not (frame and core) then return end
@@ -109,6 +128,8 @@ function Tracker.Anchor()
 	frame:ClearAllPoints()
 	if ui.custom then
 		frame:SetPoint(ui.point or FALLBACK[1], UIParent, ui.point or FALLBACK[1], ui.x or FALLBACK[2], ui.y or FALLBACK[3])
+	elseif lowestModule() then
+		frame:SetPoint("TOPRIGHT", lowestModule(), "BOTTOMRIGHT", 0, -8)
 	elseif ObjectiveTrackerFrame and ObjectiveTrackerFrame.IsVisible and ObjectiveTrackerFrame:IsVisible() then
 		frame:SetPoint("TOPRIGHT", ObjectiveTrackerFrame, "BOTTOMRIGHT", 0, -8)
 	else
@@ -142,8 +163,12 @@ function createFrame()
 	f.header.text:SetText(L["tracker.header"])
 	f.header:SetHeight(16)
 	f.header:RegisterForDrag("LeftButton")
-	f.header:SetScript("OnDragStart", function() if unlocked() then f:StartMoving() end end)
-	f.header:SetScript("OnDragStop", function() f:StopMovingOrSizing(); savePosition() end)
+	f.header:SetScript("OnDragStart", function() if unlocked() then f.moving = true; f:StartMoving() end end)
+	f.header:SetScript("OnDragStop", function()
+		if not f.moving then return end
+		f.moving = nil
+		f:StopMovingOrSizing(); savePosition()
+	end)
 	f.pinned = createLine(f, "sub", "text")
 	f.hereHeader = Style.Font(f:CreateFontString(nil, "OVERLAY"), "sub", "title")
 	f.hereHeader:SetText(L["tracker.here"])
@@ -152,10 +177,13 @@ function createFrame()
 	local group = f.pinned:CreateAnimationGroup()
 	local alpha = group:CreateAnimation("Alpha")
 	alpha:SetFromAlpha(1); alpha:SetToAlpha(0); alpha:SetDuration(FADE_SECONDS)
-	group:SetScript("OnFinished", function()
-		if state then state.phase = "next" end
+	local function finished()
+		if state and state.phase == "fading" then state.phase = "next" end
 		Tracker.Refresh()
-	end)
+	end
+	group:SetScript("OnFinished", finished)
+	group:SetScript("OnStop", finished)
+	f:SetScript("OnHide", function() if group:IsPlaying() then group:Stop() end end)
 	f.fade = group
 	frame = f
 	Tracker.Anchor()
@@ -165,7 +193,13 @@ end
 function Tracker.Refresh()
 	if not (frame and payload and core) then return end
 	local ui = core.db.profile.ui.tracker
+	if state and state.phase == "fading" and not frame.fade:IsPlaying() then state.phase = "next" end -- stuck fade
 	local content = ui.shown ~= false and Tracker.Content(payload, state and state.event) or nil
+	if state and state.phase == "next" and not (content and content.completed and content.completed.nextCard) then
+		-- nothing follows: drop the finished state and recompute, so an empty tracker hides
+		state = nil
+		content = ui.shown ~= false and Tracker.Content(payload) or nil
+	end
 	if not content and not (ui.shown ~= false and unlocked()) then frame:Hide(); return end
 	frame:Show()
 	local y = 0
@@ -179,8 +213,10 @@ function Tracker.Refresh()
 
 	local line = frame.pinned
 	frame.pinned.onClick, frame.pinned.card = nil, nil
-	frame.pinned.text:SetTextColor(unpack(Style.color.text))
-	if content and content.completed and state and state.phase ~= "next" then
+	local done = content and content.completed and state and state.phase ~= "next"
+	if frame.pinned.done and not done then Style.Font(frame.pinned.text, "sub", "text") end -- reapply the skin's colour
+	frame.pinned.done = done
+	if done then
 		frame.pinned.text:SetText(content.completed.text)
 		frame.pinned.text:SetTextColor(0.4, 0.85, 0.4)
 	elseif content and content.completed and content.completed.nextCard then
@@ -228,6 +264,7 @@ function Tracker.Render(data)
 	payload = data
 	if data.completed and data.completed.kind == "completed" then
 		if state and state.timer then core:CancelTimer(state.timer) end
+		if frame then frame.fade:Stop() end
 		state = { event = data.completed, phase = "done" }
 		state.timer = core:ScheduleTimer(function()
 			if not state then return end
@@ -238,6 +275,7 @@ function Tracker.Render(data)
 		end, DONE_SECONDS)
 	elseif state and data.profile.pinned then -- the user pinned something: the follow-up line is obsolete
 		if state.timer then core:CancelTimer(state.timer) end
+		if frame then frame.fade:Stop() end
 		state = nil
 	end
 	if not frame then
@@ -252,5 +290,5 @@ function Tracker.Init(coreObject)
 	core = coreObject
 	local events = CreateFrame("Frame")
 	events:RegisterEvent("PLAYER_ENTERING_WORLD")
-	events:SetScript("OnEvent", function() core:CallUI(Tracker.Anchor) end)
+	events:SetScript("OnEvent", function() C_Timer.After(0, function() core:CallUI(Tracker.Anchor) end) end)
 end

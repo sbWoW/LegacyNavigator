@@ -21,6 +21,7 @@ ns.Definitions = {
 	treeIDs = { 1187, 1188, 1189 },
 	pvpCategoryID = 15595, -- whole subtree is PvP
 	maxPoints = 16, -- GetMaxAvailableTraitCurrency(4225, true)
+	renownRewardLevels = { 15, 25, 40, 55 }, -- reward-track levels, confirmed in client
 	maxRenown = 65, -- lifetime earned points = cap of the cosmetic renown goal
 	-- Product decision 2026-10-04.
 	defaultActivities = { solo = true, dungeon = true, raid = false, pvp = false },

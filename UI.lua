@@ -122,6 +122,10 @@ local function showTooltip(row, anchor)
 end
 
 UI.ShowTooltip = showTooltip -- shared with the tracker rows
+-- Shared with the docked panel; they read the payload UI.Render stored last (Core renders UI before Panel).
+function UI.GoalText() return payload and goalText() end
+function UI.StatusText() return payload and statusText() end
+UI.ColorName, UI.AchievementName = colorName, achievementName
 
 -- "Zum Legacy-Fenster" buttons (D22/D24): visible whenever offered; dimmed + explained only in combat.
 local function legacyOnEnter(button)

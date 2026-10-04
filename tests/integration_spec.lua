@@ -174,7 +174,7 @@ do
 	C_MajorFactions.GetCurrentRenownLevel = function() return renown end
 	LegacySystemFrame = { IsShown = function() return shownFrame end }
 	ToggleLegacySystemUI = function() hit("toggle") end
-	C_AddOns = { LoadAddOn = function() hit("load") end }
+	C_AddOns = { LoadAddOn = function() hit("load"); return true end }
 	ShowUIPanel = function() hit("show") end
 	LEGACY_MICRO_BUTTON_LOCKED_TOOLTIP = "Earn a point."
 	local P = ns.Provider
@@ -256,6 +256,18 @@ do
 	eq(c.completed.nextCard.achievementID, 2, "next skips the completed challenge")
 	check(c.completed.nextText:find("Two", 1, true), "next text")
 	eq(c.pinnedLine, nil, "no pin after completion")
+
+	d.result["local"] = { opp(2), opp(3) }
+	c = T.Content(d)
+	eq(#c.localLines, 1, "next card excluded from local lines")
+	eq(c.localLines[1].card.achievementID, 3)
+
+	d.result.cards = { { action = "pin", achievementID = 1, charKey = "Realm-Alpha" } }
+	d.result["local"] = {}
+	c = T.Content(d)
+	check(c and c.completed and c.completed.nextCard == nil, "no next card -> completed without nextCard")
+	d.completed = nil
+	eq(T.Content(d), nil, "event dropped, nothing left -> nil (tracker hides)")
 end
 
 print("integration_spec: all assertions passed")

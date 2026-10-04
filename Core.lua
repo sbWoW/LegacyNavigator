@@ -63,6 +63,7 @@ function Core:OnEnable()
 		if not ok then self:Print("UI init failed: " .. tostring(err)) end
 	end
 	if ns.Tracker and ns.Tracker.Init then self:CallUI(ns.Tracker.Init, self) end
+	if ns.Panel and ns.Panel.Init then self:CallUI(ns.Panel.Init, self) end
 end
 
 -- Readiness ---------------------------------------------------------------------------------------
@@ -370,6 +371,7 @@ function Core:RenderUI(event)
 	}
 	if ns.UI and ns.UI.Render then self:CallUI(ns.UI.Render, payload) end
 	if ns.Tracker and ns.Tracker.Render then self:CallUI(ns.Tracker.Render, payload) end
+	if ns.Panel and ns.Panel.Render then self:CallUI(ns.Panel.Render, payload) end
 end
 
 -- Pin/unpin one card (Model.togglePin); spend/chooseGoal cards carry no achievement and cannot be pinned.
@@ -407,6 +409,15 @@ function Core:SetTrackerShown(value)
 	if flag == nil then self:Print(L["Usage: /lnav tracker on|off"]); return end
 	self.db.profile.ui.tracker.shown = flag
 	self:Print(L[flag and "Tracker on." or "Tracker off."])
+	self:RenderUI()
+end
+
+function Core:SetMinimapShown(flag)
+	local minimap = self.db.profile.minimap
+	minimap.hide = not flag
+	local icon = LibStub and LibStub("LibDBIcon-1.0", true)
+	if icon and icon:IsRegistered("LegacyNavigator") then pcall(icon.Refresh, icon, "LegacyNavigator", minimap) end
+	self:Print(L[flag and "Minimap button on." or "Minimap button off."])
 	self:RenderUI()
 end
 

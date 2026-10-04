@@ -102,6 +102,23 @@ local deDE = {
 	["tracker.header"] = "Legacy", ["tracker.here"] = "Hier", ["tracker.done"] = "%s – erledigt!",
 	["tracker.next"] = "Nächster: %s · klicken zum Anheften", ["Tracker on."] = "Tracker an.", ["Tracker off."] = "Tracker aus.",
 	["Usage: /lnav tracker on|off"] = "Aufruf: /lnav tracker on|off",
+	["Minimap button on."] = "Minimap-Knopf an.", ["Minimap button off."] = "Minimap-Knopf aus.",
+	-- docked panel (Etappe 3b)
+	["panel.goal.change"] = "Ziel ändern",
+	["panel.tab.plan"] = "Plan", ["panel.tab.chars"] = "Charaktere", ["panel.tab.settings"] = "Einstellungen",
+	["panel.progress.points"] = "%d von %d Punkten verfügbar", ["panel.progress.renown"] = "Ansehen %d von %d",
+	["panel.progress.node"] = "Mindestbedarf, Voraussetzungen ungeprüft",
+	["panel.progress.nodeNeed"] = "Mindestbedarf %d Punkte, Voraussetzungen ungeprüft",
+	["panel.menu.none"] = "Kein Ziel (Orientierung)", ["panel.menu.points"] = "Punkte ausgeben…", ["panel.menu.pointsN"] = "%d Punkte",
+	["panel.menu.renown"] = "Renown-Stufe…", ["panel.menu.renownN"] = "Stufe %d", ["panel.menu.renownReward"] = "Stufe %d (Belohnung)",
+	["panel.menu.challenge"] = "Herausforderung…", ["panel.menu.node"] = "Vorteil… (ungeprüft)",
+	["panel.menu.tree"] = "Vorteilsbaum %d", ["panel.menu.nodeN"] = "Vorteil %d (Rang %d/%d)",
+	["panel.char.level"] = "Stufe %d", ["panel.char.points"] = "%d Punkte verfügbar",
+	["panel.set.dungeon"] = "Dungeons empfehlen", ["panel.set.raid"] = "Schlachtzüge empfehlen", ["panel.set.pvp"] = "PvP empfehlen",
+	["panel.set.switch"] = "Charakterwechsel vorschlagen", ["panel.set.tracker"] = "Tracker anzeigen", ["panel.set.minimap"] = "Minimap-Knopf anzeigen",
+	["panel.set.unlock"] = "Tracker entsperren", ["panel.set.lock"] = "Tracker sperren", ["panel.set.reset"] = "Positionen zurücksetzen",
+	["panel.options.text"] = "Das Legacy-Navigator-Panel erscheint rechts neben dem Legacy-Fenster. Dort stellst du Ziel und Optionen ein.",
+	["panel.options.open"] = "Einstellungen öffnen",
 }
 
 local enUS = {
@@ -178,6 +195,23 @@ local enUS = {
 	["tracker.header"] = "Legacy", ["tracker.here"] = "Here", ["tracker.done"] = "%s – done!",
 	["tracker.next"] = "Next: %s · click to pin", ["Tracker on."] = "Tracker on.", ["Tracker off."] = "Tracker off.",
 	["Usage: /lnav tracker on|off"] = "Usage: /lnav tracker on|off",
+	["Minimap button on."] = "Minimap button on.", ["Minimap button off."] = "Minimap button off.",
+	-- docked panel (Etappe 3b)
+	["panel.goal.change"] = "Change goal",
+	["panel.tab.plan"] = "Plan", ["panel.tab.chars"] = "Characters", ["panel.tab.settings"] = "Settings",
+	["panel.progress.points"] = "%d of %d points available", ["panel.progress.renown"] = "Renown %d of %d",
+	["panel.progress.node"] = "Minimum need, prerequisites unchecked",
+	["panel.progress.nodeNeed"] = "Minimum need %d points, prerequisites unchecked",
+	["panel.menu.none"] = "No goal (orientation)", ["panel.menu.points"] = "Spend points…", ["panel.menu.pointsN"] = "%d points",
+	["panel.menu.renown"] = "Renown level…", ["panel.menu.renownN"] = "Level %d", ["panel.menu.renownReward"] = "Level %d (reward)",
+	["panel.menu.challenge"] = "Challenge…", ["panel.menu.node"] = "Advantage… (unchecked)",
+	["panel.menu.tree"] = "Advantage tree %d", ["panel.menu.nodeN"] = "Advantage %d (rank %d/%d)",
+	["panel.char.level"] = "Level %d", ["panel.char.points"] = "%d points available",
+	["panel.set.dungeon"] = "Recommend dungeons", ["panel.set.raid"] = "Recommend raids", ["panel.set.pvp"] = "Recommend PvP",
+	["panel.set.switch"] = "Suggest character switch", ["panel.set.tracker"] = "Show tracker", ["panel.set.minimap"] = "Show minimap button",
+	["panel.set.unlock"] = "Unlock tracker", ["panel.set.lock"] = "Lock tracker", ["panel.set.reset"] = "Reset positions",
+	["panel.options.text"] = "The Legacy Navigator panel appears next to the Legacy window. Set your goal and options there.",
+	["panel.options.open"] = "Open settings",
 }
 
 local L = enUS

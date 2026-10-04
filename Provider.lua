@@ -186,6 +186,11 @@ function Provider.readTree(treeID)
 	return tree
 end
 
+-- Read-only: the achievement icon texture (panel rows). nil when unreadable.
+function Provider.achievementIcon(id)
+	return (select(10, guard("GetAchievementInfo", GetAchievementInfo, id)))
+end
+
 -- Legacy window (D22). The only place that touches the Blizzard window globals. Opening is a plain window
 -- toggle outside combat; nothing is spent here (spending happens on the user's clicks inside Blizzard's frame).
 -- Gate = renown of faction 2802 > 0, same as Blizzard's ToggleLegacySystemUI.
@@ -201,7 +206,10 @@ function Provider.openLegacyWindow()
 		if LegacySystemFrame and LegacySystemFrame:IsShown() then return end
 		if Provider.legacyUnlocked() then return ToggleLegacySystemUI() end
 		if type(LegacySystemFrame_LoadUI) == "function" then LegacySystemFrame_LoadUI()
-		else C_AddOns.LoadAddOn("Blizzard_LegacySystem") end
+		else
+			local loaded, reason = C_AddOns.LoadAddOn("Blizzard_LegacySystem")
+			if not loaded then error(tostring(reason)) end
+		end
 		if not LegacySystemFrame then error("LegacySystemFrame missing") end
 		ShowUIPanel(LegacySystemFrame)
 	end)
