@@ -18,7 +18,7 @@ local UI_DEFAULTS = {
 local defaults = {
 	global = { schema = 1 },
 	profile = {
-		settings = { activities = def.defaultActivities, allowCharacterSwitch = true },
+		settings = { activities = def.defaultActivities, allowCharacterSwitch = true, preview = false },
 		ui = UI_DEFAULTS, -- AceDB copies defaults on write, so saved positions never alias this table
 		minimap = { hide = false }, -- LibDBIcon saved state
 		seenIntro = false, -- the overlay opens by itself once, at the very first start
@@ -55,6 +55,7 @@ function Core:OnEnable()
 	self:RegisterEvent("TRAIT_CONFIG_LIST_UPDATED", "CheckReady")
 	self:RegisterEvent("CRITERIA_UPDATE", "RequestRescan")
 	self:RegisterEvent("PLAYER_REGEN_ENABLED")
+	self:RegisterEvent("PLAYER_REGEN_DISABLED") -- Legacy button greys out in combat
 	self:RegisterEvent("ZONE_CHANGED_NEW_AREA")
 	for _, event in ipairs(RESCAN_EVENTS) do pcall(self.RegisterEvent, self, event, "RequestRescan") end
 	if ns.UI and ns.UI.Init then -- UI loads before Core and must not capture ns.Core at load time
@@ -239,6 +240,8 @@ function Core:ZONE_CHANGED_NEW_AREA()
 	self:Replan()
 end
 
+function Core:PLAYER_REGEN_DISABLED() self:RenderUI() end
+
 function Core:PLAYER_REGEN_ENABLED()
 	if self.scan and self.scan.paused then
 		self.scan.paused = false
@@ -394,6 +397,35 @@ function Core:SetTrackerLocked(locked)
 	if ns.UI and ns.UI.ApplyPositions then self:CallUI(ns.UI.ApplyPositions) end
 end
 
+-- Zum Legacy-Fenster (D22). Provider decides; Core only words the outcome.
+function Core:LegacyMessage(reason, detail)
+	if reason == "combat" then return L["legacy.combat"] end
+	if reason == "locked" then
+		local tip = Provider.legacyLockedTip()
+		return L["legacy.locked"] .. (tip and (" - " .. tip) or "")
+	end
+	return string.format(L["legacy.error"], tostring(detail))
+end
+
+-- Why the button cannot act right now: nil | "combat" | "locked", plus the text for the tooltip.
+function Core:LegacyBlock()
+	local reason
+	if Provider.inCombat() then reason = "combat"
+	elseif not self.db.profile.settings.preview and not Provider.legacyUnlocked() then reason = "locked" end
+	if reason then return reason, self:LegacyMessage(reason) end
+end
+
+function Core:OpenLegacyWindow()
+	local ok, reason, detail = Provider.openLegacyWindow(self.db.profile.settings.preview == true)
+	if not ok then
+		self:Print(self:LegacyMessage(reason, detail))
+	elseif reason == "preview" and not self.previewNoted then
+		self.previewNoted = true
+		self:Print(L["legacy.preview"])
+	end
+	return ok, reason
+end
+
 function Core:PrintPlan()
 	local ok, result = pcall(Planner.plan, self:BuildPlanInput())
 	if not ok then self:Print(string.format(L["Planner error: %s"], tostring(result))); return end
@@ -494,13 +526,13 @@ function Core:SetGoal(kind, a, b)
 	end
 end
 
-local SETTINGS = { pvp = true, dungeon = true, raid = true, switch = true }
+local SETTINGS = { pvp = true, dungeon = true, raid = true, switch = true, preview = true }
 function Core:SetSetting(name, value)
 	local flag
 	if value == "on" then flag = true elseif value == "off" then flag = false end
-	if not SETTINGS[name or ""] or flag == nil then self:Print(L["Usage: /lnav set pvp|dungeon|raid|switch on|off"]); return end
+	if not SETTINGS[name or ""] or flag == nil then self:Print(L["Usage: /lnav set pvp|dungeon|raid|switch|preview on|off"]); return end
 	local settings = self.db.profile.settings
-	if name == "switch" then settings.allowCharacterSwitch = flag else settings.activities[name] = flag end
+	if name == "switch" then settings.allowCharacterSwitch = flag elseif name == "preview" then settings.preview = flag else settings.activities[name] = flag end
 	self:Print(string.format(L["Setting %s: %s"], name, flag and L["on"] or L["off"]))
 	self:Replan()
 end
@@ -531,10 +563,12 @@ function Core:OnSlash(input)
 	elseif command == "set" then
 		local _, name, value = string.lower(input):match("^%s*(%S+)%s*(%S*)%s*(%S*)")
 		self:SetSetting(name ~= "" and name or nil, value ~= "" and value or nil)
+	elseif command == "legacy" then
+		self:OpenLegacyWindow()
 	elseif command == "refresh" then
 		self:Print(L["Refresh started."])
 		if self.pollTimer then self:CheckReady() elseif not Provider.isReady() then self:StartPoll() else self:StartScan() end
 	else
-		self:Print(L["Use /lnav (overlay), /lnav status, /lnav refresh, /lnav plan, /lnav goal, /lnav set, /lnav unlock, /lnav lock, /lnav reset or /lnav diag."])
+		self:Print(L["Use /lnav (overlay), /lnav status, /lnav refresh, /lnav plan, /lnav goal, /lnav set, /lnav legacy, /lnav unlock, /lnav lock, /lnav reset or /lnav diag."])
 	end
 end

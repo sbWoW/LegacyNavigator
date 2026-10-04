@@ -121,6 +121,31 @@ local function showTooltip(row)
 	GameTooltip:Show()
 end
 
+-- "Zum Legacy-Fenster" buttons (D22): visible whenever offered; dimmed + explained when it cannot act now.
+local function legacyOnEnter(button)
+	local reason, text = core and core:LegacyBlock()
+	if not reason then return end
+	GameTooltip:SetOwner(button, "ANCHOR_RIGHT")
+	GameTooltip:AddLine(text, 1, 1, 1, true)
+	GameTooltip:Show()
+end
+
+local function legacyOnLeave(button) if GameTooltip:IsOwned(button) then GameTooltip:Hide() end end
+
+-- Wires the click path once; legacyState re-evaluates the look on every refresh.
+local function legacySetup(button)
+	button:SetScript("OnClick", function() if core then core:OpenLegacyWindow() end end)
+	button:SetScript("OnEnter", legacyOnEnter)
+	button:SetScript("OnLeave", legacyOnLeave)
+	button:SetScript("OnHide", legacyOnLeave)
+end
+
+local function legacyState(button)
+	local reason = core and core:LegacyBlock()
+	button:SetEnabled(reason ~= "combat")
+	button:SetAlpha(reason and 0.5 or 1)
+end
+
 -- Row component (reusable by tracker / panel) ----------------------------------------------------------
 
 -- Title line + wrapped second line (max 2 lines, height from GetStringHeight) + right-aligned action.
@@ -145,9 +170,12 @@ function UI.CreateRow(parent, width)
 	row:SetScript("OnLeave", leave)
 	row:SetScript("OnHide", leave)
 	row.action:SetScript("OnClick", function()
-		-- Pin toggle is a pure SavedVariables action; any Blizzard-window action (spend, V1) would need `not InCombatLockdown()`.
-		if row.card and core then core:TogglePin(row.card) end
+		-- Pin toggle is a pure SavedVariables action; the Legacy window path checks combat in Provider.
+		if not (row.card and core) then return end
+		if row.card.action == "spend" then core:OpenLegacyWindow() else core:TogglePin(row.card) end
 	end)
+	row.action:SetScript("OnEnter", function(button) if row.card and row.card.action == "spend" then legacyOnEnter(button) end end)
+	row.action:SetScript("OnLeave", legacyOnLeave)
 	return row
 end
 
@@ -156,12 +184,19 @@ function UI.SetRow(row, card, pinned, marker)
 	row.card = card
 	local title, sub = cardTexts(card)
 	local pinnable = card.action == "pin"
+	local spend = card.action == "spend"
 	local isPinned = pinnable and pinned and pinned.achievementID == card.achievementID
 	local indent = marker and 16 or 0
 	row.marker:SetShown(marker == true)
-	row.action:SetShown(pinnable)
-	if pinnable then row.action:SetLabel(L[isPinned and "ui.pinnedBtn" or "ui.pin"]) end
-	local actionWidth = pinnable and row.action:GetWidth() + GAP or 0
+	row.action:SetShown(pinnable or spend)
+	if pinnable then
+		row.action:SetEnabled(true); row.action:SetAlpha(1)
+		row.action:SetLabel(L[isPinned and "ui.pinnedBtn" or "ui.pin"])
+	elseif spend then
+		row.action:SetLabel(L["ui.legacy"])
+		legacyState(row.action)
+	end
+	local actionWidth = (pinnable or spend) and row.action:GetWidth() + GAP or 0
 	row.title:ClearAllPoints()
 	row.title:SetPoint("TOPLEFT", indent, 0)
 	row.title:SetWidth(row:GetWidth() - indent - actionWidth)
@@ -172,7 +207,7 @@ function UI.SetRow(row, card, pinned, marker)
 	row.sub:SetText(sub)
 	local height = row.title:GetStringHeight()
 	if sub ~= "" then height = height + 2 + row.sub:GetStringHeight() end
-	row:SetHeight(math.max(height, pinnable and 20 or 0))
+	row:SetHeight(math.max(height, (pinnable or spend) and 20 or 0))
 	return row:GetHeight()
 end
 
@@ -218,6 +253,8 @@ local function createFrame()
 
 	f.goal = Style.Font(f:CreateFontString(nil, "OVERLAY"), "goal", "accent")
 	f.goal:SetJustifyH("LEFT"); f.goal:SetWidth(INNER)
+	f.legacy = Style.Button(f, L["ui.legacy"]) -- goal line, only while the goal is reachable
+	legacySetup(f.legacy)
 	f.pinned = Style.Font(f:CreateFontString(nil, "OVERLAY"), "sub", "text")
 	f.pinned:SetJustifyH("LEFT")
 	f.unpin = Style.Button(f, L["ui.unpin"])
@@ -246,9 +283,20 @@ function UI.Refresh()
 		return region
 	end
 
+	local first = payload.result and payload.result.cards and payload.result.cards[1]
+	local reachable = payload.result ~= nil and payload.result.status == "reachable" and first ~= nil and first.action == "spend"
+	frame.goal:SetWidth(reachable and INNER - frame.legacy:GetWidth() - GAP or INNER)
 	frame.goal:SetText(goalText())
 	place(frame.goal)
-	y = y - frame.goal:GetStringHeight() - 6
+	if reachable then
+		legacyState(frame.legacy)
+		frame.legacy:ClearAllPoints()
+		frame.legacy:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -PAD, y + 2)
+		frame.legacy:Show()
+	else
+		frame.legacy:Hide()
+	end
+	y = y - math.max(frame.goal:GetStringHeight(), reachable and 20 or 0) - 6
 
 	local pinned, result = payload.profile.pinned, payload.result
 	if pinned then

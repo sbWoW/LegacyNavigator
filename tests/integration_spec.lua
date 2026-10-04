@@ -146,4 +146,64 @@ core:Replan()
 eq(core.lastResult, good, "planner error dropped lastResult")
 check(core.planError, "planError not set")
 
+-- D22: Zum Legacy-Fenster. Blizzard globals are stubbed; Provider is the only caller.
+do
+	local calls, renown, combat, shownFrame = {}, 0, false, false
+	local function reset() for k in pairs(calls) do calls[k] = nil end; saved = {}; core.previewNoted = nil end
+	local function count(name) return calls[name] or 0 end
+	local function hit(name) calls[name] = count(name) + 1 end
+	InCombatLockdown = function() return combat end
+	C_MajorFactions.GetCurrentRenownLevel = function() return renown end
+	LegacySystemFrame = { IsShown = function() return shownFrame end }
+	ToggleLegacySystemUI = function() hit("toggle") end
+	C_AddOns = { LoadAddOn = function() hit("load") end }
+	ShowUIPanel = function() hit("show") end
+	LEGACY_MICRO_BUTTON_LOCKED_TOOLTIP = "Earn a point."
+	local P = ns.Provider
+	db.profile.settings = { activities = {}, preview = false } -- the stub db has no AceDB defaults
+
+	combat = true
+	local ok, reason = P.openLegacyWindow(true)
+	check(ok == false and reason == "combat" and count("toggle") + count("show") == 0, "combat must refuse")
+	combat = false
+
+	renown = 3
+	ok = P.openLegacyWindow(false)
+	check(ok and count("toggle") == 1, "unlocked must call ToggleLegacySystemUI")
+	shownFrame = true; P.openLegacyWindow(false)
+	eq(count("toggle"), 1, "already shown must not toggle it closed")
+	shownFrame = false
+
+	reset(); renown = 0
+	ok, reason = P.openLegacyWindow(false)
+	check(ok == false and reason == "locked" and count("toggle") + count("load") + count("show") == 0, "locked without preview")
+	core:OpenLegacyWindow()
+	check(saved[1]:find("noch gesperrt") or saved[1]:find("still locked"), "locked message")
+	check(saved[1]:find("Earn a point.", 1, true), "Blizzard locked tooltip appended")
+	eq(core:LegacyBlock(), "locked", "button explains the lock")
+
+	reset()
+	ok, reason = P.openLegacyWindow(true)
+	check(ok and reason == "preview" and count("load") == 1 and count("show") == 1 and count("toggle") == 0, "preview loads + shows")
+	LegacySystemFrame_LoadUI = function() hit("loadui") end
+	P.openLegacyWindow(true)
+	eq(count("loadui"), 1, "LegacySystemFrame_LoadUI preferred"); eq(count("load"), 1)
+	LegacySystemFrame_LoadUI = nil
+
+	db.profile.settings.preview = true
+	reset()
+	core:OpenLegacyWindow(); core:OpenLegacyWindow()
+	eq(#saved, 1, "preview note shown once")
+	eq(core:LegacyBlock(), nil, "preview on: button not blocked")
+
+	ShowUIPanel = function() error("boom") end
+	reset()
+	ok, reason = P.openLegacyWindow(true)
+	check(ok == false and reason == "error", "ShowUIPanel error handled")
+	check(pcall(core.OpenLegacyWindow, core), "Core must not throw")
+	check(saved[#saved]:find("boom"), "error message shown")
+	core:SetSetting("preview", "on"); eq(db.profile.settings.preview, true, "/lnav set preview on")
+	core:SetSetting("preview", "off"); eq(db.profile.settings.preview, false, "/lnav set preview off")
+end
+
 print("integration_spec: all assertions passed")
