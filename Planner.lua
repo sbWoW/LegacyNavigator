@@ -237,6 +237,32 @@ function Planner.plan(input)
 	local acts = (input.settings and input.settings.activities) or def.defaultActivities
 	local switch = not input.settings or input.settings.allowCharacterSwitch ~= false
 
+	-- Pinned challenge: always a full way, independent of the goal (nil = nothing to pin; status says why).
+	local pin = input.pinned
+	if pin then
+		local ach = catalogue.achievements[pin.achievementID]
+		if not ach or ach.activity == "unrated" then
+			result.pinnedCard = { achievementID = pin.achievementID, status = "unknown" }
+		elseif accountDone(account, pin.achievementID) then
+			result.pinnedCard = { achievementID = pin.achievementID, status = "done" }
+		else
+			local ways = {}
+			for _, key in ipairs(switch and sortedKeys(chars) or { cur }) do
+				local c = chars[key]
+				local n = type(c) == "table" and need(ach, c, input)
+				if n then
+					local way = makeWay(ach, key, n, input, cur)
+					way.isCur = key == cur
+					ways[#ways + 1] = way
+				end
+			end
+			table.sort(ways, cmpWays)
+			local way = ways[1]
+			result.pinnedCard = way and card(way, { why = whyFor(way, false, way.isCur) })
+				or { achievementID = pin.achievementID, status = "unknown" }
+		end
+	end
+
 	-- Goal.
 	local goal, g = input.goal, {}
 	result.goal = g

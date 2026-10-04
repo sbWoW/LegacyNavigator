@@ -1,25 +1,32 @@
 local _, ns = ...
 
--- Overlay (architecture.md 12.1-12.6). Own unprotected frames, created once, shown/hidden. The data comes in
--- through UI.Render(payload) from Core:RenderUI; UI.Init(core) is the only place the core object is received
--- (UI loads before Core, so ns.Core must not be captured at load time).
+-- Shared UI helpers (D25: the free-floating overlay is gone). Row component, goal/status text, tooltip, minimap
+-- button and the toggle global; Tracker and Panel build on it. Data comes in through UI.Render(payload) from
+-- Core:RenderUI; UI.Init(core) is the only place the core object is received (UI loads before Core).
 local L, Text, Style = ns.L, ns.Text, ns.Style
 local UI = {}
 ns.UI = UI
 
-local FRAME_NAME = "LegacyNavigatorOverlay"
-local MAX_ROWS, TOOLTIP_ITEMS = 3, 5
-local core, frame, payload
-local W, PAD, GAP = Style.width, Style.pad, Style.gap
-local INNER = W - 2 * PAD
+local TOOLTIP_ITEMS = 5
+local core, payload
+local GAP = Style.gap
 
 -- Bindings.xml calls this global; the strings below must exist before the binding UI is opened.
 BINDING_HEADER_LEGACYNAVIGATOR = L["ui.title"]
 BINDING_NAME_LEGACYNAVIGATOR_TOGGLE = L["ui.binding"]
 local function toggle()
-	if core then core:CallUI(UI.Toggle) else UI.Toggle() end
+	if core then core:ToggleLegacyWindow() end
 end
 function LegacyNavigatorToggle() toggle() end
+
+-- Perk name for a node: live spell name via Provider, "Vorteil <id>" when unreadable. trees = core.trees.
+function UI.NodeLabel(trees, nodeID)
+	local configID
+	for _, tree in pairs(trees or {}) do
+		if type(tree) == "table" and tree.nodes and tree.nodes[nodeID] then configID = tree.configID end
+	end
+	return ns.Provider.nodeName(configID, nodeID)
+end
 
 -- Text helpers ---------------------------------------------------------------------------------------
 
@@ -55,7 +62,8 @@ local function cardTexts(card)
 	if card.charKey ~= payload.currentKey then parts[#parts + 1] = colorName(card.charKey) end
 	if card.missing then parts[#parts + 1] = Text.missing(card) end
 	if hasWhy(card, "groupRequired") then parts[#parts + 1] = L["plan.why.groupRequired"] end
-	parts[#parts + 1] = Text.contribution(card, name)
+	local contribution = Text.contribution(card, name)
+	if contribution ~= "" then parts[#parts + 1] = contribution end
 	local data = Text.data(card)
 	if data ~= "" then parts[#parts + 1] = data end
 	return name, table.concat(parts, " · ")
@@ -64,22 +72,15 @@ end
 local function goalText()
 	local result, goal = payload.result, payload.profile.goal
 	if not goal then return L["ui.goal.none"] end
-	local g = result and result.goal or {}
 	if result and result.status == "invalid" then
 		local reason = L["plan.reason." .. tostring(result.reason)]
 		if result.reasonArg then reason = string.format(reason, result.reasonArg) end
 		return string.format(L["ui.goal.invalid"], reason)
 	end
-	local text
-	if goal.type == "points" then text = string.format(L["ui.goal.points"], goal.need or 0)
-	elseif goal.type == "renown" then text = string.format(L["ui.goal.renown"], goal.level or 0)
-	elseif goal.type == "challenge" then text = string.format(L["ui.goal.challenge"], achievementName(goal.id))
-	elseif goal.type == "node" then
-		text = g.need and string.format(L["ui.goal.nodeNeed"], goal.nodeID or 0, g.need) or string.format(L["ui.goal.node"], goal.nodeID or 0)
-	else text = "?" end
-	if result and result.status == "reachable" then text = text .. L["ui.goal.reachable"]
-	elseif g.remaining and g.remaining > 0 then text = text .. string.format(L["ui.goal.missing"], g.remaining) end
-	return text
+	local name
+	if goal.type == "challenge" then name = achievementName(goal.id)
+	elseif goal.type == "node" then name = UI.NodeLabel(payload.trees, goal.nodeID) end
+	return Text.goalLine(goal, name)
 end
 
 local function statusText()
@@ -107,6 +108,8 @@ local function showTooltip(row, anchor)
 	if not card or not card.achievementID then return end
 	GameTooltip:SetOwner(row, type(anchor) == "string" and anchor or "ANCHOR_RIGHT")
 	GameTooltip:AddLine(achievementName(card.achievementID), 1, 1, 1)
+	local note = Text.pointNote(card)
+	if note ~= "" then GameTooltip:AddLine(note, 0.9, 0.9, 0.9) end
 	local why = Text.why(card)
 	if #why > 0 then
 		GameTooltip:AddLine(L["ui.tooltip.why"], unpack(Style.color.title))
@@ -118,12 +121,14 @@ local function showTooltip(row, anchor)
 		for i = 1, math.min(#items, TOOLTIP_ITEMS) do GameTooltip:AddLine("• " .. openItemName(card, items[i]), 0.9, 0.9, 0.9) end
 		if #items > TOOLTIP_ITEMS then GameTooltip:AddLine(string.format(L["ui.tooltip.more"], #items - TOOLTIP_ITEMS), unpack(Style.color.sub)) end
 	end
+	GameTooltip:AddLine(L["hooks.hint.goal"], 0.7, 0.7, 0.7)
 	GameTooltip:Show()
 end
 
 UI.ShowTooltip = showTooltip -- shared with the tracker rows
 -- Shared with the docked panel; they read the payload UI.Render stored last (Core renders UI before Panel).
 function UI.GoalText() return payload and goalText() end
+function UI.GoalSub() return payload and Text.goalSub(payload.profile.goal, payload.result) or "" end
 function UI.StatusText() return payload and statusText() end
 UI.ColorName, UI.AchievementName = colorName, achievementName
 
@@ -172,6 +177,11 @@ function UI.CreateRow(parent, width)
 	if row.sub.SetMaxLines then row.sub:SetMaxLines(2) end
 	if row.title.SetMaxLines then row.title:SetMaxLines(1) end
 	row:SetScript("OnEnter", showTooltip)
+	row:SetScript("OnMouseUp", function(self, button)
+		if not (self.card and self.card.achievementID and core and self:IsMouseOver()) then return end
+		if button == "LeftButton" then core:JumpToCard(self.card)
+		elseif button == "MiddleButton" then core:SetChallengeGoal(self.card.achievementID, true) end
+	end)
 	local function leave() if GameTooltip:IsOwned(row) then GameTooltip:Hide() end end
 	row:SetScript("OnLeave", leave)
 	row:SetScript("OnHide", leave)
@@ -217,192 +227,9 @@ function UI.SetRow(row, card, pinned, marker)
 	return row:GetHeight()
 end
 
--- Frame ----------------------------------------------------------------------------------------------
+-- Core entry point ----------------------------------------------------------------------------------
 
-function UI.ApplyPositions()
-	if not frame then return end
-	local pos = core.db.profile.ui.overlay
-	frame:ClearAllPoints()
-	frame:SetPoint(pos.point or "TOP", UIParent, pos.point or "TOP", pos.x or 0, pos.y or -160)
-end
-
-local function savePosition()
-	local left, top = frame:GetLeft(), frame:GetTop()
-	if not (left and top and UIParent:GetLeft() and UIParent:GetTop()) then return end
-	local pos = core.db.profile.ui.overlay
-	pos.point, pos.x, pos.y = "TOPLEFT", left - UIParent:GetLeft(), top - UIParent:GetTop()
-	UI.ApplyPositions() -- re-anchor to the saved point so later height changes grow downward
-end
-
-local function createFrame()
-	local f = CreateFrame("Frame", FRAME_NAME, UIParent)
-	f:SetSize(W, 80)
-	f:SetFrameStrata("DIALOG")
-	f:SetClampedToScreen(true)
-	f:SetMovable(true)
-	f:Hide()
-	f:EnableMouse(true) -- swallow clicks on the overlay
-	Style.Panel(f)
-
-	local bar = CreateFrame("Frame", nil, f) -- drag handle
-	bar:SetPoint("TOPLEFT"); bar:SetPoint("TOPRIGHT"); bar:SetHeight(24)
-	bar:EnableMouse(true)
-	bar:RegisterForDrag("LeftButton")
-	bar:SetScript("OnDragStart", function() f:StartMoving() end)
-	bar:SetScript("OnDragStop", function() f:StopMovingOrSizing(); savePosition() end)
-	f.title = Style.Font(bar:CreateFontString(nil, "OVERLAY"), "title", "title")
-	f.title:SetPoint("LEFT", PAD, 0)
-	f.title:SetText(L["ui.title"])
-	f.close = Style.CloseButton(bar)
-	f.close:SetPoint("RIGHT", -4, 0)
-	f.close:SetScript("OnClick", function() f:Hide() end)
-
-	f.goal = Style.Font(f:CreateFontString(nil, "OVERLAY"), "goal", "accent")
-	f.goal:SetJustifyH("LEFT"); f.goal:SetWidth(INNER)
-	f.legacy = Style.Button(f, L["ui.legacy"]) -- goal line, only while the goal is reachable
-	legacySetup(f.legacy)
-	f.pinned = Style.Font(f:CreateFontString(nil, "OVERLAY"), "sub", "text")
-	f.pinned:SetJustifyH("LEFT")
-	f.unpin = Style.Button(f, L["ui.unpin"])
-	f.unpin:SetScript("OnClick", function() if core then core:Unpin() end end)
-	f.status = Style.Font(f:CreateFontString(nil, "OVERLAY"), "sub", "warn")
-	f.status:SetJustifyH("LEFT"); f.status:SetWidth(INNER)
-	f.divider = Style.Divider(f)
-	f.empty = Style.Font(f:CreateFontString(nil, "OVERLAY"), "sub", "sub")
-	f.empty:SetJustifyH("LEFT"); f.empty:SetWidth(INNER)
-	f.here = Style.Font(f:CreateFontString(nil, "OVERLAY"), "sub", "sub") -- "Here:" line until the tracker exists
-	f.here:SetJustifyH("LEFT"); f.here:SetWidth(INNER)
-	f.rows = {}
-	for i = 1, MAX_ROWS do f.rows[i] = UI.CreateRow(f, INNER) end
-	table.insert(UISpecialFrames, FRAME_NAME) -- ESC closes
-	frame = f -- last: a failed construction leaves frame nil and retries next time
-	UI.ApplyPositions()
-end
-
--- Lay out top to bottom; every block that is empty takes no space.
-function UI.Refresh()
-	if not (frame and payload) then return end
-	local y = -26
-	local function place(region, x, width)
-		region:ClearAllPoints()
-		region:SetPoint("TOPLEFT", frame, "TOPLEFT", x or PAD, y)
-		return region
-	end
-
-	local first = payload.result and payload.result.cards and payload.result.cards[1]
-	local reachable = payload.result ~= nil and payload.result.status == "reachable" and first ~= nil and first.action == "spend"
-	frame.goal:SetWidth(reachable and INNER - frame.legacy:GetWidth() - GAP or INNER)
-	frame.goal:SetText(goalText())
-	place(frame.goal)
-	if reachable then
-		legacyState(frame.legacy)
-		frame.legacy:ClearAllPoints()
-		frame.legacy:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -PAD, y + 2)
-		frame.legacy:Show()
-	else
-		frame.legacy:Hide()
-	end
-	y = y - math.max(frame.goal:GetStringHeight(), reachable and 20 or 0) - 6
-
-	local pinned, result = payload.profile.pinned, payload.result
-	if pinned then
-		local label = achievementName(pinned.achievementID)
-		local detail
-		if payload.profile.account and payload.profile.account.completed and payload.profile.account.completed[pinned.achievementID] then
-			label = string.format(L["ui.pinned.done"], label)
-		else
-			for _, list in ipairs({ result and result.cards or {}, result and result.alternatives or {} }) do
-				for _, card in ipairs(list) do
-					if card.achievementID == pinned.achievementID and card.charKey == pinned.charKey and card.missing then detail = Text.missing(card) end
-				end
-			end
-			label = string.format(L["ui.pinned"], label)
-			if pinned.charKey ~= payload.currentKey then label = label .. " · " .. colorName(pinned.charKey) end
-			if detail then label = label .. " · " .. detail end
-		end
-		frame.pinned:SetWidth(INNER - frame.unpin:GetWidth() - GAP)
-		frame.pinned:SetText(label)
-		place(frame.pinned)
-		frame.unpin:ClearAllPoints()
-		frame.unpin:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -PAD, y + 2)
-		frame.pinned:Show(); frame.unpin:Show()
-		y = y - math.max(frame.pinned:GetStringHeight(), 20) - 6
-	else
-		frame.pinned:Hide(); frame.unpin:Hide()
-	end
-
-	local status = statusText()
-	if status then
-		frame.status:SetText(status)
-		place(frame.status):Show()
-		y = y - frame.status:GetStringHeight() - 6
-	else
-		frame.status:Hide()
-	end
-
-	local cards = result and result.cards or {}
-	local showRows = result ~= nil and (result.status == "ok" or result.status == "reachable") and #cards > 0
-	local showEmpty = result ~= nil and result.status == "none"
-	if showRows or showEmpty then
-		frame.divider:ClearAllPoints()
-		frame.divider:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, y)
-		frame.divider:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -PAD, y)
-		frame.divider:Show()
-		y = y - 1 - GAP
-	else
-		frame.divider:Hide()
-	end
-
-	if showEmpty then
-		local reason = L["plan.reason." .. tostring(result.reason)]
-		frame.empty:SetText(L["ui.empty"] .. "\n" .. reason .. "\n" .. L["ui.empty.hint"])
-		place(frame.empty):Show()
-		y = y - frame.empty:GetStringHeight() - GAP
-	else
-		frame.empty:Hide()
-	end
-
-	for i, row in ipairs(frame.rows) do
-		local card = showRows and cards[i]
-		if card then
-			place(row, PAD)
-			y = y - UI.SetRow(row, card, pinned, i == 1 and card.charKey == payload.currentKey) - GAP
-			row:Show()
-		else
-			row.card = nil
-			row:Hide()
-		end
-	end
-	local opp = result and result["local"] and result["local"][1]
-	if opp then
-		local text = achievementName(opp.achievementID)
-		if opp.missing then text = text .. " · " .. Text.missing(opp) end
-		frame.here:SetText(string.format(L["ui.here"], text))
-		place(frame.here):Show()
-		y = y - frame.here:GetStringHeight() - GAP
-	else
-		frame.here:Hide()
-	end
-	frame:SetHeight(-y + PAD - GAP + 4)
-end
-
--- Core entry points ----------------------------------------------------------------------------------
-
-function UI.Render(data)
-	payload = data
-	if frame and frame:IsShown() then UI.Refresh() end
-end
-
-function UI.Show()
-	if not core then return end
-	if not frame then createFrame() end
-	frame:Show()
-	if payload then UI.Refresh() else core:RenderUI() end
-end
-
-function UI.Toggle()
-	if frame and frame:IsShown() then frame:Hide() else UI.Show() end
-end
+function UI.Render(data) payload = data end
 
 local function setupMinimap()
 	local ldb = LibStub and LibStub("LibDataBroker-1.1", true)

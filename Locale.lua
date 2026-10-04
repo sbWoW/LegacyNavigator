@@ -16,16 +16,17 @@ local deDE = {
 	["Data not ready yet. Try /lnav refresh."] = "Daten noch nicht bereit. /lnav refresh versuchen.",
 	["Scan incomplete, snapshot not saved: %s"] = "Scan unvollständig, Stand nicht gespeichert: %s",
 	["Refresh started."] = "Aktualisierung gestartet.",
-	["Use /lnav (overlay), /lnav status, /lnav refresh, /lnav plan, /lnav goal, /lnav set, /lnav legacy, /lnav unlock, /lnav lock, /lnav reset, /lnav tracker or /lnav diag."] = "Nutze /lnav (Overlay), /lnav status, /lnav refresh, /lnav plan, /lnav goal, /lnav set, /lnav legacy, /lnav unlock, /lnav lock, /lnav reset, /lnav tracker oder /lnav diag.",
+	["Use /lnav (Legacy window), /lnav status, /lnav refresh, /lnav plan, /lnav goal, /lnav set, /lnav legacy, /lnav unlock, /lnav lock, /lnav reset, /lnav tracker or /lnav diag."] = "Nutze /lnav (Legacy-Fenster), /lnav status, /lnav refresh, /lnav plan, /lnav goal, /lnav set, /lnav legacy, /lnav unlock, /lnav lock, /lnav reset, /lnav tracker oder /lnav diag.",
 	["Incomplete scans logged: %d (newest last; /lnav status log shows all)"] = "Unvollständige Scans protokolliert: %d (neueste zuletzt; /lnav status log zeigt alle)",
 	["  %s build %s: %s"] = "  %s Build %s: %s",
 	["Tracker locked."] = "Tracker gesperrt.", ["Tracker unlocked."] = "Tracker entsperrt.", ["Positions reset."] = "Positionen zurückgesetzt.",
-	-- overlay (Etappe 3)
+	-- shared UI texts (Etappe 3)
 	["ui.title"] = "Legacy Navigator", ["ui.binding"] = "Legacy Navigator ein/aus",
-	["ui.goal.none"] = "Ziel: keine - beste nächste Schritte (/lnav goal zum Setzen)",
-	["ui.goal.points"] = "Ziel: %d Punkte", ["ui.goal.renown"] = "Ziel: Ansehen Stufe %d",
-	["ui.goal.node"] = "Ziel: Vorteil %d", ["ui.goal.nodeNeed"] = "Ziel: Vorteil %d, Mindestbedarf %d Punkte (ungeprüft)",
-	["ui.goal.challenge"] = "Ziel: %s", ["ui.goal.missing"] = " - %d fehlen", ["ui.goal.reachable"] = " - erreichbar",
+	["ui.goal.none"] = "Kein Ziel – beste nächste Schritte",
+	["ui.goal.points"] = "Ziel: %d Punkte ausgeben", ["ui.goal.renown"] = "Ziel: Renown-Stufe %d", ["ui.goal.named"] = "Ziel: %s",
+	["ui.goal.sub.points"] = "%d Punkte fehlen", ["ui.goal.sub.points.one"] = "%d Punkt fehlt",
+	["ui.goal.sub.levels"] = "%d Stufen fehlen", ["ui.goal.sub.levels.one"] = "%d Stufe fehlt",
+	["ui.goal.sub.unchecked"] = "Voraussetzungen ungeprüft", ["ui.goal.sub.reachable"] = "erreichbar – zum Legacy-Fenster",
 	["ui.goal.invalid"] = "Ziel ungültig: %s - /lnav goal clear",
 	["ui.pinned"] = "Angeheftet: %s", ["ui.pinned.done"] = "Angeheftet: %s - erledigt!",
 	["ui.pin"] = "Anheften", ["ui.pinnedBtn"] = "Angeheftet", ["ui.unpin"] = "Lösen",
@@ -34,7 +35,7 @@ local deDE = {
 	["ui.status.combat"] = "Aktualisierung nach dem Kampf", ["ui.status.incomplete"] = "Scan unvollständig - Details: /lnav status",
 	["ui.empty"] = "Keine passende Empfehlung mit den aktuellen Einstellungen", ["ui.empty.hint"] = "Versuche: /lnav set dungeon on, /lnav set raid on oder /lnav set switch on",
 	["ui.tooltip.why"] = "Warum", ["ui.tooltip.open"] = "Offene Teilziele", ["ui.tooltip.more"] = "+ %d weitere",
-	["ui.minimap.hint"] = "Linksklick: Overlay ein/aus", ["ui.here"] = "Hier: %s",
+	["ui.minimap.hint"] = "Linksklick: Legacy-Fenster ein/aus", ["ui.here"] = "Hier: %s",
 	-- planner output (Etappe 2)
 	["plan.header.none"] = "Plan (Orientierung, kein Ziel)",
 	["plan.header.points"] = "Plan - Ziel: %d Punkte",
@@ -70,8 +71,8 @@ local deDE = {
 	["plan.card.line"] = "%d. %s (%s): %s",
 	["plan.card.alt"] = "   Alternative: %s (%s): %s",
 	["plan.card.local"] = "  Hier: %s (%s)",
-	["plan.contribution.point"] = "+1 Punkt bei Abschluss",
-	["plan.contribution.pointLast"] = "+1 Punkt",
+	["plan.contribution.point"] = "+1 Legacy-Punkt bei Abschluss",
+	["plan.contribution.pointLast"] = "Letzter Schritt: +1 Legacy-Punkt",
 	["plan.contribution.progress"] = "Fortschritt für %s",
 	["plan.missing.level"] = "%d Stufen fehlen", ["plan.missing.level.one"] = "%d Stufe fehlt",
 	["plan.missing.skill"] = "%d Punkte Fertigkeit fehlen", ["plan.missing.skill.one"] = "%d Punkt Fertigkeit fehlt",
@@ -87,7 +88,7 @@ local deDE = {
 	["plan.why.alternative"] = "Alternative",
 	["plan.data.stale"] = "Stand %s",
 	["plan.data.staleUnknown"] = "Stand unbekannt",
-	["plan.unnamed"] = "Aufgabe %d",
+	["plan.unnamed"] = "Aufgabe %d", ["panel.pinned"] = "Angeheftet: %s",
 	["Goal set."] = "Ziel gesetzt.",
 	["Goal cleared."] = "Ziel gelöscht.",
 	["Usage: /lnav goal points N | renown N | challenge ID | node ID [ranks] | clear"] = "Aufruf: /lnav goal points N | renown N | challenge ID | node ID [Ränge] | clear",
@@ -99,32 +100,39 @@ local deDE = {
 	["ui.legacy"] = "Zum Legacy-Fenster",
 	["legacy.combat"] = "Nicht im Kampf",
 	["legacy.error"] = "Legacy-Fenster konnte nicht geöffnet werden: %s",
+	["jump.failed"] = "Herausforderung konnte nicht markiert werden - das Legacy-Fenster ist geöffnet.",
 	["tracker.header"] = "Legacy", ["tracker.here"] = "Hier", ["tracker.done"] = "%s – erledigt!",
 	["tracker.next"] = "Nächster: %s · klicken zum Anheften", ["Tracker on."] = "Tracker an.", ["Tracker off."] = "Tracker aus.",
-	["Usage: /lnav tracker on|off"] = "Aufruf: /lnav tracker on|off",
+	["Usage: /lnav tracker on|off"] = "Aufruf: /lnav tracker on|off|alpha 0-100",
+	["Usage: /lnav tracker alpha 0-100"] = "Aufruf: /lnav tracker alpha 0-100",
+	["tracker.unlocked"] = "Entsperrt – ziehen, /lnav lock zum Sperren", ["panel.set.alpha"] = "Tracker-Hintergrund: %d %%",
 	["Minimap button on."] = "Minimap-Knopf an.", ["Minimap button off."] = "Minimap-Knopf aus.",
 	-- docked panel (Etappe 3b)
-	["panel.goal.change"] = "Ziel ändern",
+	["panel.goal.change"] = "Ziel ändern", ["panel.goal.clear"] = "Ziel löschen",
 	["panel.tab.plan"] = "Plan", ["panel.tab.chars"] = "Charaktere", ["panel.tab.settings"] = "Einstellungen",
-	["panel.progress.points"] = "%d von %d Punkten verfügbar", ["panel.progress.renown"] = "Ansehen %d von %d",
-	["panel.progress.node"] = "Mindestbedarf, Voraussetzungen ungeprüft",
-	["panel.progress.nodeNeed"] = "Mindestbedarf %d Punkte, Voraussetzungen ungeprüft",
-	["panel.menu.none"] = "Kein Ziel (Orientierung)", ["panel.menu.points"] = "Punkte ausgeben…", ["panel.menu.pointsN"] = "%d Punkte",
+		["panel.menu.none"] = "Kein Ziel (Orientierung)", ["panel.menu.points"] = "Punkte ausgeben…", ["panel.menu.pointsN"] = "%d Punkte",
 	["panel.menu.renown"] = "Renown-Stufe…", ["panel.menu.renownN"] = "Stufe %d", ["panel.menu.renownReward"] = "Stufe %d (Belohnung)",
 	["panel.menu.challenge"] = "Herausforderung…", ["panel.menu.node"] = "Vorteil… (ungeprüft)",
-	["panel.menu.tree"] = "Vorteilsbaum %d", ["panel.menu.nodeN"] = "Vorteil %d (Rang %d/%d)",
+	["panel.menu.nodeN"] = "%s (Rang %d/%d)",
 	["panel.char.level"] = "Stufe %d", ["panel.char.points"] = "%d Punkte verfügbar",
 	["panel.set.dungeon"] = "Dungeons empfehlen", ["panel.set.raid"] = "Schlachtzüge empfehlen", ["panel.set.pvp"] = "PvP empfehlen",
 	["panel.set.switch"] = "Charakterwechsel vorschlagen", ["panel.set.tracker"] = "Tracker anzeigen", ["panel.set.minimap"] = "Minimap-Knopf anzeigen",
 	["panel.set.unlock"] = "Tracker entsperren", ["panel.set.lock"] = "Tracker sperren", ["panel.set.reset"] = "Positionen zurücksetzen",
 	["panel.options.text"] = "Das Legacy-Navigator-Panel erscheint rechts neben dem Legacy-Fenster. Dort stellst du Ziel und Optionen ein.",
 	["panel.options.open"] = "Einstellungen öffnen",
+	-- Hooks in Blizzard's Legacy window (D26)
+	["hooks.node"] = "Vorteil %d", ["hooks.goalSet"] = "Ziel gesetzt: %s",
+	["hooks.hint.goal"] = "Mittelklick: als Ziel setzen",
+	["hooks.reason.unknown"] = "Nicht im Katalog (Daten noch nicht bereit?)", ["hooks.reason.noPoints"] = "Bringt keinen Legacy-Punkt",
+	["hooks.reason.completed"] = "Bereits abgeschlossen", ["hooks.reason.unrated"] = "Nicht wertbar (Anforderung unlesbar)",
+	["hooks.reason.disabled"] = "Aktivität in den Einstellungen aus", ["hooks.reason.owned"] = "Vorteil bereits voll erworben",
+	["tree.1187"] = "Berufe", ["tree.1188"] = "Abenteuer", ["tree.1189"] = "Fortschritt",
 }
 
 local enUS = {
 	["plan.header.none"] = "Plan (orientation, no goal)",
 	["plan.header.points"] = "Plan - goal: %d points",
-	["plan.header.node"] = "Plan - goal: advantage %d (minimum need, unchecked): %d points",
+	["plan.header.node"] = "Plan - goal: perk %d (minimum need, unchecked): %d points",
 	["plan.header.challenge"] = "Plan - goal: challenge %d",
 	["plan.header.renown"] = "Plan - goal: renown level %d (%d points to go)",
 	["plan.reason.renown"] = "renown not read yet",
@@ -136,7 +144,7 @@ local enUS = {
 	["plan.reason.account"] = "account data missing",
 	["plan.reason.character"] = "character data missing",
 	["plan.reason.catalogue"] = "catalogue not read yet",
-	["plan.reason.treesMissing"] = "advantage trees not read yet",
+	["plan.reason.treesMissing"] = "perk trees not read yet",
 	["plan.reason.needInvalid"] = "point need must be a whole number >= 1",
 	["plan.reason.needAbove"] = "point need above the limit of %d",
 	["plan.reason.challengeUnknown"] = "challenge not in catalogue",
@@ -145,9 +153,9 @@ local enUS = {
 	["plan.reason.needImpossible"] = "need cannot be reached with the remaining Legacy points",
 	["plan.reason.nodeRanks"] = "ranks outside the valid range",
 	["plan.reason.points"] = "point balance not read yet",
-	["plan.header.nodeUnknown"] = "Plan - goal: advantage %d (need unknown)",
-	["plan.reason.nodeUnknown"] = "advantage node unknown",
-	["plan.reason.nodeOwned"] = "advantage already owned",
+	["plan.header.nodeUnknown"] = "Plan - goal: perk %d (need unknown)",
+	["plan.reason.nodeUnknown"] = "perk node unknown",
+	["plan.reason.nodeOwned"] = "perk already owned",
 	["plan.reason.goalType"] = "unknown goal type",
 	["plan.reason.noStep"] = "no suitable task with a known remaining need",
 	["plan.reason.noStepOnCurrent"] = "no known step on this character; a twink is offered instead",
@@ -156,8 +164,8 @@ local enUS = {
 	["plan.card.line"] = "%d. %s (%s): %s",
 	["plan.card.alt"] = "   Alternative: %s (%s): %s",
 	["plan.card.local"] = "  Here: %s (%s)",
-	["plan.contribution.point"] = "+1 point on completion",
-	["plan.contribution.pointLast"] = "+1 point",
+	["plan.contribution.point"] = "+1 Legacy point on completion",
+	["plan.contribution.pointLast"] = "Last step: +1 Legacy point",
 	["plan.contribution.progress"] = "progress for %s",
 	["plan.missing.level"] = "%d levels missing", ["plan.missing.level.one"] = "%d level missing",
 	["plan.missing.skill"] = "%d skill points missing", ["plan.missing.skill.one"] = "%d skill point missing",
@@ -173,13 +181,14 @@ local enUS = {
 	["plan.why.alternative"] = "alternative",
 	["plan.data.stale"] = "as of %s",
 	["plan.data.staleUnknown"] = "as of unknown date",
-	["plan.unnamed"] = "Task %d",
-	["Use /lnav (overlay), /lnav status, /lnav refresh, /lnav plan, /lnav goal, /lnav set, /lnav legacy, /lnav unlock, /lnav lock, /lnav reset, /lnav tracker or /lnav diag."] = "Use /lnav (overlay), /lnav status, /lnav refresh, /lnav plan, /lnav goal, /lnav set, /lnav legacy, /lnav unlock, /lnav lock, /lnav reset, /lnav tracker or /lnav diag.",
+	["plan.unnamed"] = "Task %d", ["panel.pinned"] = "Pinned: %s",
+	["Use /lnav (Legacy window), /lnav status, /lnav refresh, /lnav plan, /lnav goal, /lnav set, /lnav legacy, /lnav unlock, /lnav lock, /lnav reset, /lnav tracker or /lnav diag."] = "Use /lnav (Legacy window), /lnav status, /lnav refresh, /lnav plan, /lnav goal, /lnav set, /lnav legacy, /lnav unlock, /lnav lock, /lnav reset, /lnav tracker or /lnav diag.",
 	["ui.title"] = "Legacy Navigator", ["ui.binding"] = "Toggle Legacy Navigator",
-	["ui.goal.none"] = "Goal: none - best next steps (/lnav goal to set one)",
-	["ui.goal.points"] = "Goal: %d points", ["ui.goal.renown"] = "Goal: renown level %d",
-	["ui.goal.node"] = "Goal: advantage %d", ["ui.goal.nodeNeed"] = "Goal: advantage %d, minimum need %d points (unchecked)",
-	["ui.goal.challenge"] = "Goal: %s", ["ui.goal.missing"] = " - %d missing", ["ui.goal.reachable"] = " - reachable",
+	["ui.goal.none"] = "No goal – best next steps",
+	["ui.goal.points"] = "Goal: spend %d points", ["ui.goal.renown"] = "Goal: renown level %d", ["ui.goal.named"] = "Goal: %s",
+	["ui.goal.sub.points"] = "%d points missing", ["ui.goal.sub.points.one"] = "%d point missing",
+	["ui.goal.sub.levels"] = "%d levels missing", ["ui.goal.sub.levels.one"] = "%d level missing",
+	["ui.goal.sub.unchecked"] = "prerequisites unchecked", ["ui.goal.sub.reachable"] = "reachable – go to the Legacy window",
 	["ui.goal.invalid"] = "Goal invalid: %s - /lnav goal clear",
 	["ui.pinned"] = "Pinned: %s", ["ui.pinned.done"] = "Pinned: %s - done!",
 	["ui.pin"] = "Pin", ["ui.pinnedBtn"] = "Pinned", ["ui.unpin"] = "Unpin",
@@ -188,30 +197,37 @@ local enUS = {
 	["ui.status.combat"] = "Updating after combat", ["ui.status.incomplete"] = "Scan incomplete - details: /lnav status",
 	["ui.empty"] = "No fitting recommendation with the current settings", ["ui.empty.hint"] = "Try: /lnav set dungeon on, /lnav set raid on or /lnav set switch on",
 	["ui.tooltip.why"] = "Why", ["ui.tooltip.open"] = "Open sub-goals", ["ui.tooltip.more"] = "+ %d more",
-	["ui.minimap.hint"] = "Left-click: toggle overlay", ["ui.here"] = "Here: %s",
+	["ui.minimap.hint"] = "Left-click: toggle Legacy window", ["ui.here"] = "Here: %s",
 	["ui.legacy"] = "To Legacy window",
 	["legacy.combat"] = "Not in combat",
 	["legacy.error"] = "Could not open the Legacy window: %s",
+	["jump.failed"] = "Could not select the challenge - the Legacy window is open.",
 	["tracker.header"] = "Legacy", ["tracker.here"] = "Here", ["tracker.done"] = "%s – done!",
 	["tracker.next"] = "Next: %s · click to pin", ["Tracker on."] = "Tracker on.", ["Tracker off."] = "Tracker off.",
-	["Usage: /lnav tracker on|off"] = "Usage: /lnav tracker on|off",
+	["Usage: /lnav tracker on|off"] = "Usage: /lnav tracker on|off|alpha 0-100",
+	["Usage: /lnav tracker alpha 0-100"] = "Usage: /lnav tracker alpha 0-100",
+	["tracker.unlocked"] = "Unlocked – drag, /lnav lock to lock", ["panel.set.alpha"] = "Tracker background: %d %%",
 	["Minimap button on."] = "Minimap button on.", ["Minimap button off."] = "Minimap button off.",
 	-- docked panel (Etappe 3b)
-	["panel.goal.change"] = "Change goal",
+	["panel.goal.change"] = "Change goal", ["panel.goal.clear"] = "Clear goal",
 	["panel.tab.plan"] = "Plan", ["panel.tab.chars"] = "Characters", ["panel.tab.settings"] = "Settings",
-	["panel.progress.points"] = "%d of %d points available", ["panel.progress.renown"] = "Renown %d of %d",
-	["panel.progress.node"] = "Minimum need, prerequisites unchecked",
-	["panel.progress.nodeNeed"] = "Minimum need %d points, prerequisites unchecked",
-	["panel.menu.none"] = "No goal (orientation)", ["panel.menu.points"] = "Spend points…", ["panel.menu.pointsN"] = "%d points",
+		["panel.menu.none"] = "No goal (orientation)", ["panel.menu.points"] = "Spend points…", ["panel.menu.pointsN"] = "%d points",
 	["panel.menu.renown"] = "Renown level…", ["panel.menu.renownN"] = "Level %d", ["panel.menu.renownReward"] = "Level %d (reward)",
-	["panel.menu.challenge"] = "Challenge…", ["panel.menu.node"] = "Advantage… (unchecked)",
-	["panel.menu.tree"] = "Advantage tree %d", ["panel.menu.nodeN"] = "Advantage %d (rank %d/%d)",
+	["panel.menu.challenge"] = "Challenge…", ["panel.menu.node"] = "Perk… (unchecked)",
+	["panel.menu.nodeN"] = "%s (rank %d/%d)",
 	["panel.char.level"] = "Level %d", ["panel.char.points"] = "%d points available",
 	["panel.set.dungeon"] = "Recommend dungeons", ["panel.set.raid"] = "Recommend raids", ["panel.set.pvp"] = "Recommend PvP",
 	["panel.set.switch"] = "Suggest character switch", ["panel.set.tracker"] = "Show tracker", ["panel.set.minimap"] = "Show minimap button",
 	["panel.set.unlock"] = "Unlock tracker", ["panel.set.lock"] = "Lock tracker", ["panel.set.reset"] = "Reset positions",
 	["panel.options.text"] = "The Legacy Navigator panel appears next to the Legacy window. Set your goal and options there.",
 	["panel.options.open"] = "Open settings",
+	-- Hooks in Blizzard's Legacy window (D26)
+	["hooks.node"] = "Perk %d", ["hooks.goalSet"] = "Goal set: %s",
+	["hooks.hint.goal"] = "Middle-click: set as goal",
+	["hooks.reason.unknown"] = "Not in the catalogue (data not ready yet?)", ["hooks.reason.noPoints"] = "Grants no Legacy point",
+	["hooks.reason.completed"] = "Already completed", ["hooks.reason.unrated"] = "Not rated (requirement unreadable)",
+	["hooks.reason.disabled"] = "Activity is off in the settings", ["hooks.reason.owned"] = "Perk already fully owned",
+	["tree.1187"] = "Professions", ["tree.1188"] = "Adventure", ["tree.1189"] = "Progression",
 }
 
 local L = enUS
@@ -233,13 +249,44 @@ function Text.missing(card)
 	return plural("plan.missing." .. m.kind, m.n)
 end
 
+-- D30: progress of the pinned step as { done, total, text = "done/total" }; nil without a reliable total.
+-- level: total = threshold level, done = current level (= total - n); criteria: total = all criteria.
+function Text.ProgressFor(card)
+	local m = card and card.missing
+	if not m or card.status == "done" or card.status == "unknown" then return nil end
+	if type(m.total) ~= "number" or m.total <= 0 or type(m.n) ~= "number" then return nil end
+	local done = math.max(0, math.min(m.total, m.total - m.n))
+	return { done = done, total = m.total, text = done .. "/" .. m.total }
+end
+
 -- name is the achievement name (the card only carries its ID).
 function Text.contribution(card, name)
-	if card.contribution ~= "point" then
-		return string.format(L2["plan.contribution.progress"], name or card.name or string.format(L2["plan.unnamed"], card.achievementID or 0))
-	end
+	if card.contribution == "point" then return "" end -- D28: every challenge gives one point, not worth a segment
+	return string.format(L2["plan.contribution.progress"], name or card.name or string.format(L2["plan.unnamed"], card.achievementID or 0))
+end
+
+-- Tooltip line for point cards (D28): "+1 Legacy point on completion" or, with exactly one open sub-goal, "Last step: ...".
+function Text.pointNote(card)
+	if card.contribution ~= "point" then return "" end
 	local m = card.missing
 	return L2[(m and m.kind == "criteria" and m.n == 1) and "plan.contribution.pointLast" or "plan.contribution.point"]
+end
+
+-- Goal block (D28): big line = what the goal is; sub line = what is missing + caveat, once. name = node/challenge name.
+function Text.goalLine(goal, name)
+	if not goal then return L2["ui.goal.none"] end
+	if goal.type == "points" then return string.format(L2["ui.goal.points"], goal.need or 0) end
+	if goal.type == "renown" then return string.format(L2["ui.goal.renown"], goal.level or 0) end
+	return string.format(L2["ui.goal.named"], name or "?")
+end
+
+function Text.goalSub(goal, result)
+	if not goal or not result or result.status == "invalid" or result.status == "loading" then return "" end
+	if result.status == "reachable" then return L2["ui.goal.sub.reachable"] end
+	local g, parts = result.goal or {}, {}
+	if g.remaining and g.remaining > 0 then parts[1] = plural(goal.type == "renown" and "ui.goal.sub.levels" or "ui.goal.sub.points", g.remaining) end
+	if goal.type == "node" then parts[#parts + 1] = L2["ui.goal.sub.unchecked"] end
+	return table.concat(parts, " · ")
 end
 
 -- Confirmed data says nothing (""); stale data carries its date. `now` is accepted for callers, unused.

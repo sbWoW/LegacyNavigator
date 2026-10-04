@@ -191,6 +191,23 @@ function Provider.achievementIcon(id)
 	return (select(10, guard("GetAchievementInfo", GetAchievementInfo, id)))
 end
 
+-- Perk name (D26): node -> entry -> definition -> spell name. Every step guarded; fallback "Vorteil <id>".
+function Provider.nodeName(configID, nodeID)
+	local traits, spells = C_Traits, C_Spell
+	local name
+	if configID ~= nil and nodeID ~= nil then
+		local node = guard("C_Traits.GetNodeInfo", path(traits, "GetNodeInfo"), configID, nodeID)
+		local entryID = type(node) == "table" and ((node.entryIDsWithCommittedRanks or {})[1] or (node.entryIDs or {})[1])
+		local entry = entryID and guard("C_Traits.GetEntryInfo", path(traits, "GetEntryInfo"), configID, entryID)
+		local definitionID = type(entry) == "table" and entry.definitionID
+		local definition = definitionID and guard("C_Traits.GetDefinitionInfo", path(traits, "GetDefinitionInfo"), definitionID)
+		local spellID = type(definition) == "table" and definition.spellID
+		if spellID then name = guard("C_Spell.GetSpellName", path(spells, "GetSpellName"), spellID) end
+	end
+	if type(name) == "string" and name ~= "" then return name end
+	return string.format(ns.L["hooks.node"], nodeID or 0)
+end
+
 -- Legacy window (D22). The only place that touches the Blizzard window globals. Opening is a plain window
 -- toggle outside combat; nothing is spent here (spending happens on the user's clicks inside Blizzard's frame).
 -- Gate = renown of faction 2802 > 0, same as Blizzard's ToggleLegacySystemUI.
@@ -214,5 +231,48 @@ function Provider.openLegacyWindow()
 		ShowUIPanel(LegacySystemFrame)
 	end)
 	if not ok then return false, "error", string.sub(tostring(err), 1, 200) end
+	return true
+end
+
+-- D25: one entry for /lnav, minimap, key and tracker click. Open window -> close it (HideUIPanel under pcall).
+function Provider.toggleLegacyWindow()
+	if Provider.inCombat() then return false, "combat" end
+	if LegacySystemFrame and LegacySystemFrame:IsShown() then
+		local ok, err = pcall(HideUIPanel, LegacySystemFrame)
+		if not ok then return false, "error", string.sub(tostring(err), 1, 200) end
+		return true
+	end
+	return Provider.openLegacyWindow()
+end
+
+-- Jump to one achievement in the Legacy window: open it, show the challenges page, select its category and the
+-- achievement. Public API only (EventRegistry triggers that Blizzard's own pages listen to); no method is replaced.
+-- The window may need a frame after loading, so the selection runs on C_Timer.After(0), retried once.
+-- onFail() is called at most once when the page opened but the selection did not work. Returns openLegacyWindow's result.
+local CHALLENGES_PAGE = 2 -- Blizzard_LegacySystem.lua: CHALLENGES_PAGE_IDX
+
+local function selectChallenge(achievementID, categoryID)
+	if EventRegistry and EventRegistry.TriggerEvent then
+		EventRegistry:TriggerEvent("Legacy.SelectPage", CHALLENGES_PAGE)
+	elseif LegacySystemFrame and LegacySystemFrame.SelectPage then
+		LegacySystemFrame:SelectPage(CHALLENGES_PAGE)
+	else
+		error("no page selector")
+	end
+	categoryID = categoryID or guard("GetAchievementCategory", GetAchievementCategory, achievementID)
+	if categoryID == nil then error("no category") end
+	EventRegistry:TriggerEvent("Legacy.OpenToChallengeCategory", categoryID)
+	EventRegistry:TriggerEvent("Legacy.SelectChallenge", achievementID)
+end
+
+function Provider.showChallenge(achievementID, categoryID, onFail)
+	local ok, reason, detail = Provider.openLegacyWindow()
+	if not ok then return ok, reason, detail end
+	local function attempt(n)
+		if pcall(selectChallenge, achievementID, categoryID) then return end
+		if n < 2 and C_Timer and C_Timer.After then return C_Timer.After(0, function() attempt(n + 1) end) end
+		if onFail then pcall(onFail) end
+	end
+	if C_Timer and C_Timer.After then C_Timer.After(0, function() attempt(1) end) else attempt(2) end
 	return true
 end

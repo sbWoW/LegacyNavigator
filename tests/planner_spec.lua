@@ -495,4 +495,20 @@ do
 	eq(#Planner.plan(inp)["local"], 0, "pinned challenge listed as local opportunity")
 end
 
+-- pinnedCard: full way for the pinned challenge in goal mode; done/unknown carry a status.
+do
+	local cat = fx.cat.subset(62382, 728, 900002)
+	local inp = input(cat, { [A] = char(cat) }, { goal = { type = "points", need = 3 } })
+	inp.pinned = { achievementID = 62382, charKey = A, pinnedAt = 1 }
+	local pc = Planner.plan(inp).pinnedCard
+	check(pc and pc.achievementID == 62382 and pc.charKey == A and pc.action == "pin" and pc.missing and pc.missing.n == 3, "goal mode pinnedCard missing")
+	inp.account.completed[62382] = true
+	pc = Planner.plan(inp).pinnedCard
+	eq(pc.status, "done"); eq(pc.missing, nil)
+	inp.pinned.achievementID = 424242
+	eq(Planner.plan(inp).pinnedCard.status, "unknown")
+	inp.pinned = nil
+	eq(Planner.plan(inp).pinnedCard, nil)
+end
+
 print("planner_spec: all checks passed")

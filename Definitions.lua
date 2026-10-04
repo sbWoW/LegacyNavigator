@@ -14,11 +14,15 @@ for classFile, ids in pairs(classes) do
 	for tier = 1, 3 do classMilestones[ids[tier]] = { class = classFile, level = LEVELS[tier] } end
 end
 
+local LEGACY_TREE_PROFESSIONS_ID, LEGACY_TREE_ADVENTURE_ID, LEGACY_TREE_PROGRESSION_ID = 1187, 1188, 1189
+
 ns.Definitions = {
+	LEGACY_TREE_PROFESSIONS_ID = LEGACY_TREE_PROFESSIONS_ID, LEGACY_TREE_ADVENTURE_ID = LEGACY_TREE_ADVENTURE_ID,
+	LEGACY_TREE_PROGRESSION_ID = LEGACY_TREE_PROGRESSION_ID,
 	verifiedBuild = "70205",
 	rewardTrackFactionID = 2802,
 	pointsCurrencyID = 4225,
-	treeIDs = { 1187, 1188, 1189 },
+	treeIDs = { LEGACY_TREE_PROFESSIONS_ID, LEGACY_TREE_ADVENTURE_ID, LEGACY_TREE_PROGRESSION_ID },
 	pvpCategoryID = 15595, -- whole subtree is PvP
 	maxPoints = 16, -- GetMaxAvailableTraitCurrency(4225, true)
 	renownRewardLevels = { 15, 25, 40, 55 }, -- reward-track levels, confirmed in client

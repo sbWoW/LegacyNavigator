@@ -146,6 +146,39 @@ core:Replan()
 eq(core.lastResult, good, "planner error dropped lastResult")
 check(core.planError, "planError not set")
 
+-- D29: setting a goal also pins; goal mode still delivers pinnedCard for a non-goal pin; clearing keeps the pin.
+do
+	core.forcePlanError = false
+	db.profile.settings = db.profile.settings or { activities = { solo = true } }
+	db.profile.pinned = nil
+	core:SetGoal("challenge", 62003, nil, true)
+	eq(db.profile.pinned and db.profile.pinned.achievementID, 62003, "challenge goal must pin it")
+	local pinnedAt = db.profile.pinned.pinnedAt
+	core:SetGoal("challenge", 62003, nil, true)
+	eq(db.profile.pinned and db.profile.pinned.achievementID, 62003, "same id must not toggle off")
+	core:TogglePin({ achievementID = 62382, charKey = "Realm-Alpha", action = "pin" })
+	eq(db.profile.pinned.achievementID, 62382)
+	core:SetGoal("challenge", 62003, nil, true)
+	eq(db.profile.pinned.achievementID, 62003, "challenge goal replaces the pin")
+	core:TogglePin({ achievementID = 62382, charKey = "Realm-Alpha", action = "pin" })
+	core:SetGoal("challenge", 62003, nil, true)
+	core:TogglePin({ achievementID = 62382, charKey = "Realm-Alpha", action = "pin" })
+	local pc = core.lastResult.pinnedCard
+	check(pc and pc.achievementID == 62382 and pc.missing and pc.missing.n == 3, "goal mode must keep pinnedCard of the non-goal pin")
+	local line = ns.Tracker.Content({ profile = db.profile, currentKey = "Realm-Alpha", catalogue = core.catalogue, result = core.lastResult }).pinnedLine
+	check(line.text:find("3", 1, true) and line.text ~= core:AchievementName(62382), "tracker pinned line shows missing text in goal mode")
+	check(line.progress == nil or line.progress.text:find("^%d+/%d+$"), "tracker pinned line passes progress through")
+	core:SetGoal("clear")
+	eq(db.profile.pinned.achievementID, 62382, "clearing the goal keeps the pin")
+	db.profile.pinned = nil
+	core:SetGoal("points", 3, nil, true)
+	local first
+	for _, c in ipairs(core.lastResult.cards) do if c.action == "pin" then first = c; break end end
+	check(first and db.profile.pinned and db.profile.pinned.achievementID == first.achievementID, "points goal pins the first card")
+	core:SetGoal("clear")
+	db.profile.pinned = nil
+end
+
 -- Etappe 4: Core clears the pin when it reports completion; the render payload carries the one-shot event.
 do
 	local payloads = {}
@@ -204,6 +237,16 @@ do
 	reset(); core:OpenLegacyWindow()
 	eq(#saved, 0, "locked open prints nothing")
 
+	-- D25 toggle: shown -> HideUIPanel (pcall), hidden -> open, combat -> refuse
+	HideUIPanel = function() hit("hide") end
+	shownFrame = true; reset()
+	check(P.toggleLegacyWindow() and count("hide") == 1, "shown: toggle hides")
+	HideUIPanel = function() error("nope") end
+	ok, reason = P.toggleLegacyWindow(); check(ok == false and reason == "error", "HideUIPanel error handled")
+	shownFrame = false; combat = true
+	ok, reason = P.toggleLegacyWindow(); check(ok == false and reason == "combat", "toggle refuses in combat")
+	combat = false; shownFrame = false
+
 	ShowUIPanel = function() error("boom") end
 	reset()
 	ok, reason = P.openLegacyWindow()
@@ -212,6 +255,25 @@ do
 	check(saved[#saved]:find("boom"), "error message shown")
 	core:SetSetting("preview", "on")
 	check(saved[#saved]:find("Usage"), "preview setting is gone")
+end
+
+-- Tracker background alpha: setter clamps/rounds/saves, slash parses `tracker alpha N`.
+do
+	db.profile.ui = db.profile.ui or {}
+	db.profile.ui.tracker = db.profile.ui.tracker or {}
+	local ui = db.profile.ui.tracker
+	core:SetTrackerAlpha(50); eq(ui.bgAlpha, 0.5, "50 -> 0.5")
+	core:SetTrackerAlpha(150); eq(ui.bgAlpha, 1, "clamped high")
+	core:SetTrackerAlpha(-5); eq(ui.bgAlpha, 0, "clamped low")
+	core:SetTrackerAlpha("37.4"); eq(ui.bgAlpha, 0.37, "string, rounded")
+	saved = {}
+	core:SetTrackerAlpha("abc"); eq(ui.bgAlpha, 0.37, "invalid keeps value"); check(saved[#saved]:find("Usage"), "invalid prints usage")
+	core:OnSlash("tracker alpha 80"); eq(ui.bgAlpha, 0.8, "slash alpha")
+	core:OnSlash("TRACKER ALPHA 250"); eq(ui.bgAlpha, 1, "slash clamps")
+	saved = {}
+	core:OnSlash("tracker alpha"); eq(ui.bgAlpha, 1, "slash without N keeps value"); check(saved[#saved]:find("Usage"), "usage")
+	core:OnSlash("tracker off"); eq(ui.shown, false, "on/off still works")
+	core:OnSlash("tracker on"); eq(ui.shown, true)
 end
 
 -- Tracker.Content (pure): selection logic without frames.
@@ -268,6 +330,44 @@ do
 	check(c and c.completed and c.completed.nextCard == nil, "no next card -> completed without nextCard")
 	d.completed = nil
 	eq(T.Content(d), nil, "event dropped, nothing left -> nil (tracker hides)")
+end
+
+-- Click-to-jump: pure target choice + Provider.showChallenge with stubs.
+do
+	local cat = { achievements = {
+		[62382] = { categoryID = 15586, criteria = { { type = 8, assetID = 768 }, { type = 8, assetID = 770 } } },
+		[768] = { categoryID = 15586, criteria = {} },
+		[62003] = { categoryID = 15586, criteria = { { type = 0 } } },
+	} }
+	local J = core.JumpTarget
+	eq(J(cat, { achievementID = 62382, missing = { items = { 768, 770 } } }), 768, "explorer chain -> first open zone helper")
+	eq(J(cat, { achievementID = 62003, missing = { items = { 768 } } }), 62003, "normal card keeps its id")
+	eq(J(cat, { achievementID = 62382 }), 62382, "no missing items -> own id")
+	eq(J(cat, { achievementID = 62382, missing = { items = { 999 } } }), 62382, "unknown helper -> own id")
+	eq(J(cat, nil), nil, "no card")
+
+	local P, fired, combat, queue, failed = ns.Provider, {}, false, {}, 0
+	InCombatLockdown = function() return combat end
+	LegacySystemFrame = { IsShown = function() return true end }
+	EventRegistry = { TriggerEvent = function(_, name, ...) fired[#fired + 1] = { name, ... } end }
+	C_Timer = { After = function(_, fn) queue[#queue + 1] = fn end }
+	local function run() while #queue > 0 do table.remove(queue, 1)() end end
+	check(P.showChallenge(768, 15586, function() failed = failed + 1 end), "opens")
+	run()
+	eq(#fired, 3, "page + category + challenge"); eq(fired[1][1], "Legacy.SelectPage"); eq(fired[1][2], 2)
+	eq(fired[2][1], "Legacy.OpenToChallengeCategory"); eq(fired[2][2], 15586)
+	eq(fired[3][1], "Legacy.SelectChallenge"); eq(fired[3][2], 768); eq(failed, 0)
+	-- selection throws: retried once, then onFail exactly once, no error escapes
+	EventRegistry.TriggerEvent = function() error("boom") end
+	check(P.showChallenge(768, 15586, function() failed = failed + 1 end), "still reports the window as open")
+	run(); eq(failed, 1, "failure tolerated, one hint")
+	-- combat refuses before anything fires
+	EventRegistry.TriggerEvent = function(_, name) fired[#fired + 1] = { name } end
+	local n = #fired; combat = true
+	local ok, reason = P.showChallenge(768, 15586)
+	check(ok == false and reason == "combat", "combat refuses"); run(); eq(#fired, n, "nothing fired in combat")
+	combat = false
+	EventRegistry, C_Timer = nil, nil
 end
 
 print("integration_spec: all assertions passed")

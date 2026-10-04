@@ -497,7 +497,8 @@ do
 		check(h.events[event], event .. " not registered")
 	end
 	local renders, inits = {}, 0
-	h.ns.UI = { Init = function() inits = inits + 1 end, Render = function(p) renders[#renders + 1] = p end, Show = function() renders.shown = true end }
+	h.ns.UI = { Init = function() inits = inits + 1 end, Render = function(p) renders[#renders + 1] = p end }
+	h.core.OpenLegacyWindow = function() renders.shown = true end
 	h.core:OnEnable(); eq(inits, 1, "UI.Init not called from OnEnable")
 	h:fire("PLAYER_ENTERING_WORLD"); h:drain()
 	check(#renders >= 1, "FinishScan did not render")
@@ -523,17 +524,18 @@ do
 	h:fire("ZONE_CHANGED_NEW_AREA")
 	check(#renders > before and h.core.scan == nil, "zone change: no replan or started a scan")
 	check(not renders.shown, "intro opened while data is still loading")
-	-- bare /lnav toggles the overlay when a UI exists
+	-- bare /lnav toggles the Legacy window (D25)
 	local toggled = 0
-	h.ns.UI.Toggle = function() toggled = toggled + 1 end
+	h.ns.Provider.toggleLegacyWindow = function() toggled = toggled + 1; return true end
 	h.core:OnSlash(""); eq(toggled, 1)
-	-- first start opens the overlay once, after the first successful plan
+	-- first start opens the Legacy window once, after the first successful plan
 	local g = fixture()
 	local shown = 0
-	g.ns.UI = { Show = function() shown = shown + 1 end, Render = function() end }
+	g.core.OpenLegacyWindow = function() shown = shown + 1 end
+	g.ns.UI = { Render = function() end }
 	g:fire("PLAYER_ENTERING_WORLD"); g:drain()
-	eq(g.db.profile.seenIntro, true, "seenIntro not set"); eq(shown, 1, "intro overlay not shown once")
-	g.core:Replan(); eq(shown, 1, "intro overlay opened again")
+	eq(g.db.profile.seenIntro, true, "seenIntro not set"); eq(shown, 1, "intro window not shown once")
+	g.core:Replan(); eq(shown, 1, "intro window opened again")
 end
 
 print("model_spec: all assertions passed")

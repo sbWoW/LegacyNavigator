@@ -15,7 +15,7 @@ Style.fonts = { title = "GameFontNormalSmall", goal = "GameFontHighlightLarge", 
 
 local C = Style.color
 local skin -- the S handed over by EllesmereUI.RegisterSkin; kept for frames created later
-local objects, accents = {}, {}
+local objects, accents, bars = {}, {}, {}
 
 local function rgba(t, a) return t[1], t[2], t[3], a or t[4] or 1 end
 
@@ -48,6 +48,7 @@ end
 
 local function recolorAccents()
 	for _, fs in ipairs(accents) do fs:SetTextColor(Style.AccentColor()) end
+	for _, bar in ipairs(bars) do bar:SetStatusBarColor(Style.AccentColor()) end
 end
 
 -- role: key of Style.fonts; color: key of Style.color (default text). "accent" follows the Ellesmere accent.
@@ -82,10 +83,47 @@ function Style.Panel(frame)
 	return frame
 end
 
+-- Backdrop opacity of a Style.Panel frame. Own look: the bg colour with alpha a. Skinned: the skin keeps its bg
+-- texture in private state (nothing on the frame to reach) and fades our own textures, so the only lever is
+-- frame:SetAlpha. That also dims the skin border, and the frame must hold no content: call this on a pure
+-- background frame.
+function Style.SetPanelAlpha(frame, a)
+	if not skin then
+		frame._lnTextures[1]:SetColorTexture(C.panel[1], C.panel[2], C.panel[3], a)
+		return
+	end
+	frame:SetAlpha(a)
+end
+
 function Style.Divider(parent)
 	local tex = parent:CreateTexture(nil, "ARTWORK")
 	tex:SetColorTexture(rgba(C.border)); tex:SetHeight(1)
 	return tex
+end
+
+-- D30: flat 3-px bar (accent fill on a dim track, follows the Ellesmere accent) with "done/total" at its right end.
+-- bar:Set(progress) shows it (progress = Text.ProgressFor result, or true-full via full) or hides it for nil.
+function Style.ProgressBar(parent, width)
+	local f = CreateFrame("Frame", nil, parent)
+	f:SetSize(width, 10)
+	f.label = Style.Font(f:CreateFontString(nil, "OVERLAY"), "sub", "sub")
+	f.label:SetPoint("RIGHT", f, "RIGHT", 0, 0)
+	f.bar = CreateFrame("StatusBar", nil, f)
+	f.bar:SetHeight(3)
+	f.bar:SetPoint("LEFT", f, "LEFT", 0, 0); f.bar:SetPoint("RIGHT", f.label, "LEFT", -4, 0)
+	f.bar:SetStatusBarTexture("Interface\\Buttons\\WHITE8X8")
+	f.track = f.bar:CreateTexture(nil, "BACKGROUND")
+	f.track:SetAllPoints(); f.track:SetColorTexture(1, 1, 1, 0.12)
+	f.bar:SetStatusBarColor(Style.AccentColor())
+	bars[#bars + 1] = f.bar
+	function f:Set(progress, full)
+		if not progress then self:Hide(); return end
+		self.bar:SetMinMaxValues(0, progress.total)
+		self.bar:SetValue(full and progress.total or progress.done)
+		self.label:SetText(full and (progress.total .. "/" .. progress.total) or progress.text)
+		self:Show()
+	end
+	return f
 end
 
 -- Small flat button; width follows the label.

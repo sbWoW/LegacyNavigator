@@ -17,23 +17,28 @@ local P = load("enUS")
 
 -- ProgressModel: bar only with a reliable denominator
 local m = P.ProgressModel({ type = "points", need = 5 }, { status = "ok", goal = { need = 5, available = 3, remaining = 2 } })
-check(m.bar and m.value == 3 and m.max == 5, "points bar"); eq(m.text, "3 of 5 points available")
+check(m.bar and m.value == 3 and m.max == 5, "points bar"); eq(m.text, "2 points missing")
 m = P.ProgressModel({ type = "points", need = 5 }, { status = "reachable", goal = { need = 5, available = 9 } })
-eq(m.value, 5, "bar value is clamped to need")
+eq(m.value, 5, "bar value is clamped to need"); eq(m.text, "reachable – go to the Legacy window")
 m = P.ProgressModel({ type = "points", need = 5 }, { status = "loading", goal = {} })
 check(not m.bar and m.text == "", "loading: no bar, no zero")
 m = P.ProgressModel({ type = "renown", level = 25 }, { status = "ok", goal = { level = 25, need = 10, remaining = 10 } })
-check(m.bar and m.value == 15 and m.max == 25, "renown bar"); eq(m.text, "Renown 15 of 25")
+check(m.bar and m.value == 15 and m.max == 25, "renown bar"); eq(m.text, "10 levels missing")
 m = P.ProgressModel({ type = "renown", level = 25 }, { status = "reachable", goal = { level = 25, need = -3, remaining = 0 } })
 eq(m.value, 25, "renown reached")
 m = P.ProgressModel({ type = "node", nodeID = 7 }, { status = "ok", goal = { need = 3, available = 1 } })
-check(not m.bar, "node never gets a bar"); eq(m.text, "Minimum need 3 points, prerequisites unchecked")
-eq(P.ProgressModel({ type = "node", nodeID = 7 }, { status = "ok", goal = {} }).text, "Minimum need, prerequisites unchecked")
-eq(load("deDE").ProgressModel({ type = "node", nodeID = 7 }, { status = "ok", goal = {} }).text, "Mindestbedarf, Voraussetzungen ungeprüft")
+check(not m.bar, "node never gets a bar"); eq(m.text, "prerequisites unchecked")
+eq(P.ProgressModel({ type = "node", nodeID = 7 }, { status = "ok", goal = {} }).text, "prerequisites unchecked")
+eq(load("deDE").ProgressModel({ type = "node", nodeID = 7 }, { status = "ok", goal = {} }).text, "Voraussetzungen ungeprüft")
+eq(P.ProgressModel({ type = "node", nodeID = 7 }, { status = "ok", goal = { remaining = 1 } }).text, "1 point missing · prerequisites unchecked")
+eq(load("deDE").ProgressModel({ type = "node", nodeID = 7 }, { status = "ok", goal = { remaining = 2 } }).text, "2 Punkte fehlen · Voraussetzungen ungeprüft")
+eq(load("deDE").ProgressModel({ type = "renown", level = 25 }, { status = "ok", goal = { level = 25, need = 1, remaining = 1 } }).text, "1 Stufe fehlt")
 check(not P.ProgressModel({ type = "challenge", id = 1 }, { status = "ok", goal = {} }).bar, "challenge: no bar")
 check(not P.ProgressModel(nil, { status = "ok", goal = {} }).bar, "no goal")
 check(not P.ProgressModel({ type = "points", need = 99 }, { status = "invalid", goal = {}, reason = "needAbove" }).bar, "invalid: no bar")
 check(not P.ProgressModel({ type = "points", need = 5 }, nil).bar, "no result")
+
+check(P.GoalClearVisible({ type = "points", need = 1 }) == true and P.GoalClearVisible(nil) == false, "GoalClearVisible")
 
 -- GoalMenuModel
 local function ach(name, points, activity, cat) return { name = name, points = points, activity = activity, categoryID = cat } end
@@ -65,9 +70,9 @@ eq(#challenge.children[1].children, 1); eq(challenge.children[1].children[1].act
 eq(challenge.children[2].children[1].text, "Aardvark", "challenges sorted by name"); eq(challenge.children[2].children[2].text, "Bravo")
 eq(challenge.children[2].children[1].action.kind, "challenge")
 local node = menu[5]
-eq(node.text, "Advantage… (unchecked)"); eq(#node.children, 1, "incomplete tree skipped"); eq(node.children[1].text, "Advantage tree 1")
+eq(node.text, "Perk… (unchecked)"); eq(#node.children, 1, "incomplete tree skipped"); eq(node.children[1].text, "Professions")
 local nodes = node.children[1].children
-eq(#nodes, 2, "fully owned node skipped"); eq(nodes[1].action.a, 4); eq(nodes[2].action.a, 5); eq(nodes[2].text, "Advantage 5 (rank 0/2)"); eq(nodes[2].action.kind, "node")
+eq(#nodes, 2, "fully owned node skipped"); eq(nodes[1].action.a, 4); eq(nodes[2].action.a, 5); eq(nodes[2].text, "Perk 5 (rank 0/2)", "no Provider: fallback name"); eq(nodes[2].action.kind, "node")
 -- no catalogue / trees -> only the always-available entries
 local bare = P.GoalMenuModel(nil, nil, nil, nil)
 eq(#bare, 3, "no challenge/node entries without data")
@@ -75,6 +80,59 @@ eq(load("deDE").GoalMenuModel(nil, nil, nil)[1].text, "Kein Ziel (Orientierung)"
 -- enabling raid adds the raid challenge
 settings.activities.raid = true
 eq(#P.GoalMenuModel(catalogue, settings, trees, {})[4].children[1].children, 3, "raid enabled: 12, 15, 16")
+
+-- Hooks pure helpers (D26)
+local H = (function()
+	local ns2 = { L = setmetatable({}, { __index = function(_, k) return k end }) }
+	assert(loadfile("Hooks.lua"))("LegacyNavigator", ns2)
+	return ns2.Hooks
+end)()
+local goal, why = H.GoalForChallenge(catalogue, settings, { [15] = true }, 16)
+eq(goal.kind, "challenge"); eq(goal.a, 16)
+eq(select(2, H.GoalForChallenge(catalogue, settings, {}, 99)), "hooks.reason.unknown")
+eq(select(2, H.GoalForChallenge(catalogue, settings, {}, 13)), "hooks.reason.unrated")
+eq(select(2, H.GoalForChallenge(catalogue, settings, { [15] = true }, 15)), "hooks.reason.completed")
+eq(select(2, H.GoalForChallenge(catalogue, settings, {}, 14)), "hooks.reason.noPoints")
+settings.activities.raid = false
+eq(select(2, H.GoalForChallenge(catalogue, settings, {}, 12)), "hooks.reason.disabled")
+settings.activities.raid = true
+eq(select(2, H.GoalForChallenge(nil, nil, nil, 1)), "hooks.reason.unknown")
+do -- D27: rows resolve to a goal; point-less zone helpers climb to their chain
+	local cat = { achievements = {
+		[1] = { points = 1, activity = "dungeon", criteria = { { type = 8, assetID = 2 } } },
+		[2] = { points = 0, activity = "dungeon", criteria = { { type = 8, assetID = 3 } } },
+		[3] = { points = 0, activity = "dungeon", criteria = {} },
+		[4] = { points = 0, activity = "dungeon", criteria = {} },
+	} }
+	eq(H.GoalForCard(cat, settings, {}, 1).a, 1, "chain card = itself")
+	eq(H.GoalForCard(cat, settings, {}, 3).a, 1, "nested helper -> top chain")
+	eq(select(2, H.GoalForCard(cat, settings, {}, 4)), "hooks.reason.noPoints", "orphan helper -> reason")
+	eq(select(2, H.GoalForCard(cat, settings, { [1] = true }, 3)), "hooks.reason.completed", "chain done")
+end
+goal = H.GoalForNode(trees, 5); eq(goal.kind, "node"); eq(goal.a, 5); eq(goal.b, 1, "next rank")
+goal = H.GoalForNode(trees, 3); eq(goal, nil); eq(select(2, H.GoalForNode(trees, 3)), "hooks.reason.owned")
+eq(H.GoalForNode(trees, 77).b, nil, "unknown node passes through to Core")
+
+-- Provider.nodeName: stubbed C_Traits chain, every step guarded
+do
+	local ns3 = { L = ns_L, Definitions = {} }
+	ns3.L = setmetatable({ ["hooks.node"] = "Advantage %d" }, { __index = function(_, k) return k end })
+	ns3.Definitions = { treeIDs = { 1 } }
+	assert(loadfile("Provider.lua"))("LegacyNavigator", ns3)
+	local N = ns3.Provider.nodeName
+	eq(N(900, 7), "Advantage 7", "no API at all: fallback")
+	C_Traits = {
+		GetNodeInfo = function(c, n) return { entryIDsWithCommittedRanks = {}, entryIDs = { 40 } } end,
+		GetEntryInfo = function(c, e) return { definitionID = 50 } end,
+		GetDefinitionInfo = function(d) return { spellID = 60 } end,
+	}
+	eq(N(900, 7), "Advantage 7", "no C_Spell: fallback")
+	C_Spell = { GetSpellName = function(id) return id == 60 and "Swiftness" or nil end }
+	eq(N(900, 7), "Swiftness"); eq(N(nil, 7), "Advantage 7", "no config")
+	C_Traits.GetEntryInfo = function() error("boom") end
+	eq(N(900, 7), "Advantage 7", "throwing step: fallback")
+	C_Traits, C_Spell = nil, nil
+end
 
 -- SettingsModel
 local s = P.SettingsModel({ settings = { activities = { dungeon = true, raid = false, pvp = false }, allowCharacterSwitch = true }, ui = { tracker = { shown = false } }, minimap = { hide = false } })
@@ -92,5 +150,11 @@ eq(rows[2].state, "stale"); eq(rows[2].level, 12); eq(rows[2].available, 2); eq(
 -- DockSide: tabs hang right of the host
 eq(P.DockSide(1000, 44, 320, 1920), "right"); eq(P.DockSide(1600, 44, 320, 1920), "left"); eq(P.DockSide(1552, 44, 320, 1920), "right", "exact fit incl. gap")
 eq(P.DockSide(1553, 44, 320, 1920), "left")
+
+-- PinnedText
+local cat = { achievements = { [5] = { name = "Explorer" } } }
+eq(P.PinnedText({}, nil, cat, "K"), nil, "no pin -> nil")
+local pt = P.PinnedText({ pinned = { achievementID = 5 } }, { pinnedCard = { achievementID = 5, charKey = "K", missing = { kind = "criteria", n = 3, total = 3, ctype = "area" } } }, cat, "K")
+check(pt and pt:find("Explorer", 1, true) and pt:find("3", 1, true), "pinned text has name and missing")
 
 print("panel_spec: all checks passed")

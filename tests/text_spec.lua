@@ -35,12 +35,28 @@ eq(de.missing(with({ kind = "criteria", n = 1, ctype = "boss" })), "1 Boss offen
 eq(de.missing(with({ kind = "level", n = 1 })), "1 Stufe fehlt")
 
 -- contribution
-eq(de.contribution(card()), "+1 Punkt bei Abschluss")
-eq(en.contribution(card()), "+1 point on completion")
-eq(de.contribution(with({ kind = "criteria", n = 1, ctype = "boss" })), "+1 Punkt", "exactly one open sub-goal")
-eq(de.contribution(with({ kind = "level", n = 1 })), "+1 Punkt bei Abschluss", "only criteria count as sub-goals")
+eq(de.contribution(card()), "", "point: no row segment (D28)")
+eq(de.pointNote(card()), "+1 Legacy-Punkt bei Abschluss")
+eq(en.pointNote(card()), "+1 Legacy point on completion")
+eq(de.pointNote(with({ kind = "criteria", n = 1, ctype = "boss" })), "Letzter Schritt: +1 Legacy-Punkt", "exactly one open sub-goal")
+eq(en.pointNote(with({ kind = "criteria", n = 1, ctype = "boss" })), "Last step: +1 Legacy point")
+eq(de.pointNote(with({ kind = "level", n = 1 })), "+1 Legacy-Punkt bei Abschluss", "only criteria count as sub-goals")
+eq(de.pointNote(card({ contribution = "progress" })), "")
 eq(de.contribution(card({ contribution = "progress" }), "Explore Durotar"), "Fortschritt für Explore Durotar")
 eq(en.contribution(card({ contribution = "progress", name = "Explore Durotar" })), "progress for Explore Durotar")
+
+-- goal block (D28)
+eq(de.goalLine(nil), "Kein Ziel – beste nächste Schritte"); eq(en.goalLine(nil), "No goal – best next steps")
+eq(de.goalLine({ type = "points", need = 5 }), "Ziel: 5 Punkte ausgeben"); eq(en.goalLine({ type = "points", need = 5 }), "Goal: spend 5 points")
+eq(de.goalLine({ type = "renown", level = 7 }), "Ziel: Renown-Stufe 7"); eq(en.goalLine({ type = "renown", level = 7 }), "Goal: renown level 7")
+eq(en.goalLine({ type = "node" }, "Working Overtime"), "Goal: Working Overtime"); eq(de.goalLine({ type = "challenge" }, "X"), "Ziel: X")
+local node = { type = "node" }
+eq(de.goalSub(node, { status = "ok", goal = { remaining = 1 } }), "1 Punkt fehlt · Voraussetzungen ungeprüft")
+eq(de.goalSub(node, { status = "ok", goal = { remaining = 3 } }), "3 Punkte fehlen · Voraussetzungen ungeprüft")
+eq(en.goalSub(node, { status = "ok", goal = { remaining = 1 } }), "1 point missing · prerequisites unchecked")
+eq(de.goalSub({ type = "renown" }, { status = "ok", goal = { remaining = 2 } }), "2 Stufen fehlen")
+eq(de.goalSub(node, { status = "reachable", goal = {} }), "erreichbar – zum Legacy-Fenster")
+eq(de.goalSub({ type = "challenge" }, { status = "ok", goal = {} }), ""); eq(de.goalSub(nil, {}), "")
 
 -- data: confirmed says nothing, stale carries the date (2026-10-04 12:00 UTC is the 4th in any timezone)
 local t = 1791115200
@@ -75,11 +91,11 @@ for key in src:gmatch('L%["([^"]-)"%]') do
 	end
 end
 local ui = ""
-for _, name in ipairs({ "UI.lua", "Tracker.lua", "Panel.lua" }) do local f2 = assert(io.open(name)); ui = ui .. f2:read("*a"); f2:close() end
+for _, name in ipairs({ "UI.lua", "Tracker.lua", "Panel.lua", "Hooks.lua" }) do local f2 = assert(io.open(name)); ui = ui .. f2:read("*a"); f2:close() end
 for key in ui:gmatch('L%["([^"]-)"%]') do
 	if loc.enUS[key] == nil or loc.deDE[key] == nil then error("UI uses text missing in enUS/deDE: " .. key) end
 end
-for _, key in ipairs({ "ui.pin", "ui.pinnedBtn", "ui.here", "ui.legacy", "legacy.combat", "legacy.error", "tracker.header", "tracker.here", "tracker.done", "tracker.next" }) do
+for _, key in ipairs({ "ui.pin", "ui.pinnedBtn", "ui.here", "ui.legacy", "legacy.combat", "legacy.error", "tracker.header", "tracker.here", "tracker.done", "tracker.next", "tracker.unlocked", "panel.set.alpha", "hooks.node", "hooks.goalSet", "hooks.hint.goal", "tree.1187", "tree.1188", "tree.1189" }) do
 	if loc.enUS[key] == nil or loc.deDE[key] == nil then error("UI button key " .. key) end
 end
 -- Panel.lua builds some keys dynamically ("panel.set." .. key, tabs from a table)
@@ -87,7 +103,7 @@ for _, key in ipairs({ "dungeon", "raid", "pvp", "switch", "tracker", "minimap" 
 	if loc.enUS["panel.set." .. key] == nil or loc.deDE["panel.set." .. key] == nil then error("panel.set key " .. key) end
 end
 for _, key in ipairs({ "panel.tab.plan", "panel.tab.chars", "panel.tab.settings", "panel.menu.none", "panel.menu.points", "panel.menu.renown",
-	"panel.menu.challenge", "panel.menu.node", "panel.set.lock", "panel.set.unlock", "panel.set.reset", "panel.goal.change" }) do
+	"panel.menu.challenge", "panel.menu.node", "panel.set.lock", "panel.set.unlock", "panel.set.reset", "panel.goal.change", "panel.goal.clear" }) do
 	if loc.enUS[key] == nil or loc.deDE[key] == nil then error("panel key " .. key) end
 end
 -- dynamically built keys in Core ("plan.reason." .. x, L[self.states[domain]]) are covered by these lists
@@ -96,5 +112,17 @@ for _, key in ipairs({ "account", "character", "catalogue", "treesMissing", "nee
 	"goalType", "noStep", "noStepOnCurrent" }) do
 	if loc.enUS["plan.reason." .. key] == nil or loc.deDE["plan.reason." .. key] == nil then error("reason key " .. key) end
 end
+
+-- ProgressFor (D30)
+local pf = en.ProgressFor
+eq(pf(with({ kind = "level", n = 24, total = 25 })).text, "1/25", "level")
+eq(pf(with({ kind = "criteria", n = 6, total = 6, ctype = "boss" })).text, "0/6", "criteria")
+eq(pf(with({ kind = "criteria", n = 545, total = 549, ctype = "area" })).text, "4/549", "explorer chain")
+eq(pf(with({ kind = "criteria", n = 545, total = 549 })).done, 4)
+eq(pf(with({ kind = "level", n = 3 })), nil, "no total")
+eq(pf(with({ kind = "level", n = 3, total = 0 })), nil, "total 0")
+eq(pf(card({ missing = false })), nil, "no missing")
+eq(pf({ status = "done" }), nil); eq(pf({ status = "unknown" }), nil); eq(pf(nil), nil)
+eq(pf(with({ kind = "level", n = 30, total = 25 })).done, 0, "clamped")
 
 print("text_spec: all checks passed")

@@ -11,8 +11,7 @@ local RESCAN_EVENTS = {
 	"TRAIT_CONFIG_UPDATED", "MAJOR_FACTION_RENOWN_LEVEL_CHANGED",
 }
 local UI_DEFAULTS = {
-	overlay = { point = "TOP", x = 0, y = -160 }, -- top-anchored: the overlay grows downward
-	tracker = { point = "TOPRIGHT", x = -60, y = -260, locked = true, shown = true, custom = false }, -- custom: dragged, saved point replaces the Objective Tracker anchor
+	tracker = { point = "TOPRIGHT", x = -60, y = -260, locked = true, shown = true, custom = false, bgAlpha = 0.6 }, -- custom: dragged, saved point replaces the Objective Tracker anchor
 }
 
 local defaults = {
@@ -21,7 +20,7 @@ local defaults = {
 		settings = { activities = def.defaultActivities, allowCharacterSwitch = true },
 		ui = UI_DEFAULTS, -- AceDB copies defaults on write, so saved positions never alias this table
 		minimap = { hide = false }, -- LibDBIcon saved state
-		seenIntro = false, -- the overlay opens by itself once, at the very first start
+		seenIntro = false, -- the Legacy window opens by itself once, at the very first start
 		pinned = nil, -- { achievementID, charKey, pinnedAt } (Model.togglePin)
 		goal = nil, -- { type = "points", need = n } | { type = "renown", level = n } | { type = "challenge", id = n } | { type = "node", nodeID = n, ranks = n }
 		account = nil, -- Model.snapshot().account
@@ -64,6 +63,7 @@ function Core:OnEnable()
 	end
 	if ns.Tracker and ns.Tracker.Init then self:CallUI(ns.Tracker.Init, self) end
 	if ns.Panel and ns.Panel.Init then self:CallUI(ns.Panel.Init, self) end
+	if ns.Hooks and ns.Hooks.Init then self:CallUI(ns.Hooks.Init, self) end
 end
 
 -- Readiness ---------------------------------------------------------------------------------------
@@ -344,9 +344,9 @@ function Core:Replan(event)
 	end
 	self:RenderUI(event)
 	local profile = self.db.profile
-	if ok and not profile.seenIntro and result.status ~= "loading" and ns.UI and ns.UI.Show then
-		profile.seenIntro = true -- first start only: the overlay opens once by itself
-		self:CallUI(ns.UI.Show)
+	if ok and not profile.seenIntro and result.status ~= "loading" and not Provider.inCombat() then
+		profile.seenIntro = true -- first start only: the Legacy window opens once by itself (never in combat)
+		self:OpenLegacyWindow()
 	end
 end
 
@@ -359,11 +359,11 @@ function Core:CallUI(fn, ...)
 	return good
 end
 
--- Everything the overlay needs; UI reads Core state only through this payload (and the helpers it gets in Init).
+-- Everything the UI needs; UI reads Core state only through this payload (and the helpers it gets in Init).
 function Core:RenderUI(event)
 	local payload = {
 		result = self.lastResult, planError = self.planError, loadingKept = self.loadingKept, resultAt = self.lastResultAt,
-		states = self.states, catalogue = self.catalogue, profile = self.db.profile,
+		states = self.states, catalogue = self.catalogue, trees = self.trees, profile = self.db.profile,
 		currentKey = self.currentKey or Provider.readCharacter().key,
 		scanning = self.scan ~= nil or self.pollTimer ~= nil,
 		combatPending = self.pendingScan == true or (self.scan ~= nil and self.scan.paused == true),
@@ -392,7 +392,6 @@ function Core:ResetPositions()
 		ui[name] = ui[name] or {}
 		for _, key in ipairs({ "point", "x", "y", "custom" }) do ui[name][key] = default[key] end
 	end
-	if ns.UI and ns.UI.ApplyPositions then self:CallUI(ns.UI.ApplyPositions) end
 	if ns.Tracker then self:CallUI(ns.Tracker.ApplyPositions) end
 	self:Print(L["Positions reset."])
 end
@@ -409,6 +408,15 @@ function Core:SetTrackerShown(value)
 	if flag == nil then self:Print(L["Usage: /lnav tracker on|off"]); return end
 	self.db.profile.ui.tracker.shown = flag
 	self:Print(L[flag and "Tracker on." or "Tracker off."])
+	self:RenderUI()
+end
+
+-- v: percent 0..100 (number or string); clamped and rounded. Slider and `/lnav tracker alpha N` both land here.
+function Core:SetTrackerAlpha(v)
+	v = tonumber(v)
+	if not v then self:Print(L["Usage: /lnav tracker alpha 0-100"]); return end
+	v = math.floor(math.min(100, math.max(0, v)) + 0.5)
+	self.db.profile.ui.tracker.bgAlpha = v / 100
 	self:RenderUI()
 end
 
@@ -434,6 +442,40 @@ end
 
 function Core:OpenLegacyWindow()
 	local ok, reason, detail = Provider.openLegacyWindow()
+	if not ok then self:Print(self:LegacyMessage(reason, detail)) end
+	return ok, reason
+end
+
+-- Pure: which achievement a clicked card jumps to. Explorer chains (all criteria are type-8 helpers) go to the first
+-- open zone helper (missing.items[1]), everything else to the card's own achievement.
+function Core.JumpTarget(catalogue, card)
+	if type(card) ~= "table" or card.achievementID == nil then return nil end
+	local ach = catalogue and catalogue.achievements and catalogue.achievements[card.achievementID]
+	local criteria = ach and ach.criteria
+	local first = card.missing and card.missing.items and card.missing.items[1]
+	if first and catalogue.achievements[first] and type(criteria) == "table" and #criteria > 0 then
+		for _, criterion in ipairs(criteria) do if criterion.type ~= 8 then return card.achievementID end end
+		return first
+	end
+	return card.achievementID
+end
+
+-- Click on a recommendation: open the Legacy window at that challenge. Combat -> "Nicht im Kampf".
+function Core:ShowChallenge(id)
+	if id == nil then return false end
+	local ach = self.catalogue and self.catalogue.achievements and self.catalogue.achievements[id]
+	local ok, reason, detail = Provider.showChallenge(id, ach and ach.categoryID, function() self:Print(L["jump.failed"]) end)
+	if not ok then self:Print(self:LegacyMessage(reason, detail)) end
+	return ok, reason
+end
+
+function Core:JumpToCard(card)
+	return self:ShowChallenge(Core.JumpTarget(self.catalogue, card))
+end
+
+-- D25: /lnav, minimap, key and tracker click toggle the Legacy window (the panel follows it).
+function Core:ToggleLegacyWindow()
+	local ok, reason, detail = Provider.toggleLegacyWindow()
 	if not ok then self:Print(self:LegacyMessage(reason, detail)) end
 	return ok, reason
 end
@@ -510,7 +552,23 @@ function Core:GoalProblem(goal)
 	end
 end
 
-function Core:SetGoal(kind, a, b)
+-- D29: setting a goal also pins (never unpins). Challenge goal: that challenge; otherwise the first card of the new plan.
+function Core:PinForGoal(goal)
+	local profile, card = self.db.profile, nil
+	if goal.type == "challenge" then
+		card = { achievementID = goal.id, charKey = self.currentKey or Provider.readCharacter().key }
+	else
+		local ok, result = pcall(Planner.plan, self:BuildPlanInput())
+		for _, c in ipairs(ok and result.cards or {}) do
+			if c.action == "pin" then card = c; break end
+		end
+	end
+	if card and not (profile.pinned and profile.pinned.achievementID == card.achievementID) then
+		Model.togglePin(profile, card, Provider.serverTime())
+	end
+end
+
+function Core:SetGoal(kind, a, b, quiet)
 	local profile, n, m = self.db.profile, tonumber(a), tonumber(b)
 	local goal
 	if kind == "clear" then
@@ -530,12 +588,28 @@ function Core:SetGoal(kind, a, b)
 			self:Print(L["plan.status.invalid"] .. " " .. (arg and string.format(reason, arg) or reason))
 		else
 			profile.goal = goal
-			self:Print(L["Goal set."])
+			if not quiet then self:Print(L["Goal set."]) end
+			self:PinForGoal(goal)
 			self:Replan()
+			return true
 		end
 	else
 		self:Print(L["Usage: /lnav goal points N | renown N | challenge ID | node ID [ranks] | clear"])
 	end
+end
+
+-- D27: middle-click on a challenge (Blizzard button or our row). climb: resolve a point-less zone helper to its chain.
+function Core:SetChallengeGoal(id, climb)
+	local profile = self.db.profile
+	local resolve = climb and ns.Hooks.GoalForCard or ns.Hooks.GoalForChallenge
+	local goal, reason = resolve(self.catalogue, profile.settings, profile.account and profile.account.completed, id)
+	if not goal then self:Print(L[reason]); return false end
+	if self:SetGoal(goal.kind, goal.a, goal.b, true) then
+		local ach = self.catalogue.achievements[goal.a]
+		self:Print(string.format(L["hooks.goalSet"], ach and ach.name or string.format(L["plan.unnamed"], goal.a)))
+		return true
+	end
+	return false
 end
 
 local SETTINGS = { pvp = true, dungeon = true, raid = true, switch = true }
@@ -554,13 +628,14 @@ function Core:OnSlash(input)
 	if command == "diag" then
 		if ns.Diag and ns.Diag.HandleSlash then ns.Diag.HandleSlash(input) end
 	elseif command == "" then
-		if ns.UI and ns.UI.Toggle then self:CallUI(ns.UI.Toggle) else self:PrintStatus() end
+		self:ToggleLegacyWindow()
 	elseif command == "status" then
 		self:PrintStatus(string.lower(input):match("^%s*%S+%s+(%S+)") == "log")
 	elseif command == "unlock" or command == "lock" then
 		self:SetTrackerLocked(command == "lock")
 	elseif command == "tracker" then
-		self:SetTrackerShown(string.lower(input):match("^%s*%S+%s+(%S+)"))
+		local sub, arg = string.lower(input):match("^%s*%S+%s+(%S+)%s*(%S*)")
+		if sub == "alpha" then self:SetTrackerAlpha(arg) else self:SetTrackerShown(sub) end
 	elseif command == "reset" then
 		self:ResetPositions()
 	elseif command == "debug" then -- dev aid: exercises the planner-error state of the UI
@@ -583,6 +658,6 @@ function Core:OnSlash(input)
 		self:Print(L["Refresh started."])
 		if self.pollTimer then self:CheckReady() elseif not Provider.isReady() then self:StartPoll() else self:StartScan() end
 	else
-		self:Print(L["Use /lnav (overlay), /lnav status, /lnav refresh, /lnav plan, /lnav goal, /lnav set, /lnav legacy, /lnav unlock, /lnav lock, /lnav reset, /lnav tracker or /lnav diag."])
+		self:Print(L["Use /lnav (Legacy window), /lnav status, /lnav refresh, /lnav plan, /lnav goal, /lnav set, /lnav legacy, /lnav unlock, /lnav lock, /lnav reset, /lnav tracker or /lnav diag."])
 	end
 end

@@ -7,7 +7,7 @@ local L, Text, Style = ns.L, ns.Text, ns.Style
 local Tracker = {}
 ns.Tracker = Tracker
 
-local WIDTH, MAX_LOCAL, DONE_SECONDS, FADE_SECONDS = 260, 2, 8, 0.5
+local WIDTH, MAX_LOCAL, DONE_SECONDS, FADE_SECONDS, PAD, DEFAULT_ALPHA = 260, 2, 8, 0.5, 6, 0.6
 local FALLBACK = { "TOPRIGHT", -60, -260 }
 local createFrame
 local core, frame, payload, state -- state = { event, phase = "done" | "fading" | "next" } after a completion
@@ -28,14 +28,6 @@ local function colorName(data, charKey)
 	return string.format("|cff%02x%02x%02x%s|r", byte(color.r), byte(color.g), byte(color.b), name)
 end
 
-local function findCard(result, id, charKey)
-	for _, list in ipairs({ result and result.cards or {}, result and result.alternatives or {} }) do
-		for _, card in ipairs(list) do
-			if card.achievementID == id and card.charKey == charKey then return card end
-		end
-	end
-end
-
 -- data: the Core render payload; event: the one-shot {kind = "completed"} (payload.completed or the kept copy).
 -- Returns nil (nothing to show) or { pinnedLine, localLines (max 2), completed }; every line is { text, card }.
 function Tracker.Content(data, event)
@@ -44,12 +36,15 @@ function Tracker.Content(data, event)
 	local out, pinned, result = { localLines = {} }, data.profile.pinned, data.result
 	if pinned then
 		local parts = { achievementName(data, pinned.achievementID) }
-		if pinned.charKey ~= data.currentKey then parts[#parts + 1] = colorName(data, pinned.charKey) end
-		local card = findCard(result, pinned.achievementID, pinned.charKey)
+		local card = result and result.pinnedCard
+		if card and card.achievementID ~= pinned.achievementID then card = nil end
+		local charKey = card and card.charKey or pinned.charKey
+		if charKey ~= data.currentKey then parts[#parts + 1] = colorName(data, charKey) end
 		if card and card.missing then parts[#parts + 1] = Text.missing(card) end
 		out.pinnedLine = {
-			text = table.concat(parts, " · "), charKey = pinned.charKey, achievementID = pinned.achievementID,
-			card = card or { achievementID = pinned.achievementID, charKey = pinned.charKey },
+			text = table.concat(parts, " · "), charKey = charKey, achievementID = pinned.achievementID,
+			card = card and card.missing and card or { achievementID = pinned.achievementID, charKey = pinned.charKey },
+			progress = Text.ProgressFor(card), -- D30
 		}
 	end
 	local pinnedID = pinned and pinned.achievementID
@@ -82,11 +77,11 @@ end
 
 -- Frames ---------------------------------------------------------------------------------------------------
 
-local function openOverlay()
-	if core and ns.UI then core:CallUI(ns.UI.Toggle) end
+local function toggleWindow()
+	if core then core:ToggleLegacyWindow() end
 end
 
--- A flat clickable text line with hover highlight and the overlay's tooltip.
+-- A flat clickable text line with hover highlight and the shared row tooltip.
 local function createLine(parent, role, color)
 	local line = CreateFrame("Button", nil, parent)
 	line:SetWidth(WIDTH)
@@ -96,7 +91,12 @@ local function createLine(parent, role, color)
 	line.text:SetPoint("TOPLEFT"); line.text:SetWidth(WIDTH); line.text:SetJustifyH("LEFT")
 	if line.text.SetMaxLines then line.text:SetMaxLines(2) end
 	line:SetScript("OnClick", function(self)
-		if self.onClick then self.onClick() else openOverlay() end
+		if self.onClick then self.onClick() elseif self.jump then self.jump() else toggleWindow() end
+	end)
+	line:SetScript("OnMouseUp", function(self, button)
+		if button == "MiddleButton" and self.card and self.card.achievementID and core and self:IsMouseOver() then
+			core:SetChallengeGoal(self.card.achievementID, true)
+		end
 	end)
 	line:SetScript("OnEnter", function(self) if self.card and ns.UI and ns.UI.ShowTooltip then ns.UI.ShowTooltip(self, "ANCHOR_LEFT") end end)
 	line:SetScript("OnLeave", function(self) if GameTooltip:IsOwned(self) then GameTooltip:Hide() end end)
@@ -159,6 +159,19 @@ function createFrame()
 	f:SetClampedToScreen(true)
 	f:SetMovable(true)
 	f:Hide()
+	local back = CreateFrame("Frame", nil, f)
+	back:SetPoint("TOPLEFT", f, "TOPLEFT", -PAD, PAD); back:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", PAD, -PAD)
+	back:SetFrameLevel(math.max(f:GetFrameLevel() - 1, 0))
+	Style.Panel(back)
+	back.edges = {} -- 1-px accent border, shown while unlocked
+	for i, p in ipairs({ { "TOPLEFT", "TOPRIGHT", nil, 1 }, { "BOTTOMLEFT", "BOTTOMRIGHT", nil, 1 }, { "TOPLEFT", "BOTTOMLEFT", 1 }, { "TOPRIGHT", "BOTTOMRIGHT", 1 } }) do
+		local tex = back:CreateTexture(nil, "OVERLAY")
+		tex:SetPoint(p[1]); tex:SetPoint(p[2])
+		if p[3] then tex:SetWidth(p[3]) else tex:SetHeight(p[4]) end
+		tex:Hide()
+		back.edges[i] = tex
+	end
+	f.back = back
 	f.header = createLine(f, "row", "accent")
 	f.header.text:SetText(L["tracker.header"])
 	f.header:SetHeight(16)
@@ -169,7 +182,10 @@ function createFrame()
 		f.moving = nil
 		f:StopMovingOrSizing(); savePosition()
 	end)
+	f.hint = Style.Font(f:CreateFontString(nil, "OVERLAY"), "sub", "sub")
+	f.hint:SetJustifyH("LEFT"); f.hint:SetWidth(WIDTH); f.hint:SetText(L["tracker.unlocked"])
 	f.pinned = createLine(f, "sub", "text")
+	f.progress = Style.ProgressBar(f, WIDTH)
 	f.hereHeader = Style.Font(f:CreateFontString(nil, "OVERLAY"), "sub", "title")
 	f.hereHeader:SetText(L["tracker.here"])
 	f.locals = { createLine(f, "sub", "sub"), createLine(f, "sub", "sub") }
@@ -210,9 +226,16 @@ function Tracker.Refresh()
 		y = y - (gap or 0)
 	end
 	put(frame.header, 16 + 2)
+	local isUnlocked = unlocked()
+	if isUnlocked then put(frame.hint, frame.hint:GetStringHeight() + 4) else frame.hint:Hide() end
+	local back = frame.back
+	Style.SetPanelAlpha(back, type(ui.bgAlpha) == "number" and ui.bgAlpha or DEFAULT_ALPHA)
+	for _, edge in ipairs(back.edges) do
+		if isUnlocked then edge:SetColorTexture(Style.AccentColor()); edge:Show() else edge:Hide() end
+	end
 
 	local line = frame.pinned
-	frame.pinned.onClick, frame.pinned.card = nil, nil
+	frame.pinned.onClick, frame.pinned.jump, frame.pinned.card = nil, nil, nil
 	local done = content and content.completed and state and state.phase ~= "next"
 	if frame.pinned.done and not done then Style.Font(frame.pinned.text, "sub", "text") end -- reapply the skin's colour
 	frame.pinned.done = done
@@ -227,6 +250,7 @@ function Tracker.Refresh()
 	elseif content and content.pinnedLine then
 		frame.pinned.text:SetText(content.pinnedLine.text)
 		frame.pinned.card = content.pinnedLine.card
+		frame.pinned.jump = function() core:JumpToCard(content.pinnedLine.card) end
 	else
 		line = nil
 	end
@@ -237,6 +261,13 @@ function Tracker.Refresh()
 	else
 		frame.pinned:Hide()
 	end
+	-- D30: bar under the pinned line; full during the green "done" phase, hidden without a reliable total
+	local pl = content and content.pinnedLine
+	local progress = pl and not done and not frame.pinned.onClick and pl.progress or nil
+	if progress then frame.lastProgress = progress elseif not done then frame.lastProgress = nil end
+	if done then progress = frame.lastProgress end
+	frame.progress:Set(progress, done and true or false)
+	if progress then put(frame.progress, 14) end
 	local locals = content and content.localLines or {}
 	if #locals > 0 then
 		put(frame.hereHeader, frame.hereHeader:GetStringHeight() + 2)
@@ -248,11 +279,12 @@ function Tracker.Refresh()
 		if entry then
 			row.text:SetText(entry.text)
 			row.card = entry.card
+			row.jump = function() core:ShowChallenge(entry.card.achievementID) end
 			local h = row.text:GetStringHeight()
 			row:SetHeight(h)
 			put(row, h + 2)
 		else
-			row.card = nil
+			row.card, row.jump = nil, nil
 			row:Hide()
 		end
 	end

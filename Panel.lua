@@ -19,20 +19,34 @@ local tab = "plan"
 
 -- Pure helpers ---------------------------------------------------------------------------------------
 
+function Panel.GoalClearVisible(goal) return goal ~= nil end
+
 -- Bar only with a reliable denominator: points (available / need) and renown (renown / level).
 -- Node goals are a minimum need with unchecked prerequisites: text only. Everything else: no extra line.
 function Panel.ProgressModel(goal, result)
 	local g = result and result.goal or {}
 	if not goal or not result or result.status == "invalid" then return { bar = false, text = "" } end
+	local text = ns.Text.goalSub(goal, result)
 	if goal.type == "points" and type(g.need) == "number" and type(g.available) == "number" and g.need > 0 then
-		return { bar = true, value = math.min(g.available, g.need), max = g.need, text = string.format(L["panel.progress.points"], g.available, g.need) }
+		return { bar = true, value = math.min(g.available, g.need), max = g.need, text = text }
 	elseif goal.type == "renown" and type(g.level) == "number" and type(g.need) == "number" and g.level > 0 then
-		local value = math.max(0, math.min(g.level, g.level - g.need))
-		return { bar = true, value = value, max = g.level, text = string.format(L["panel.progress.renown"], value, g.level) }
-	elseif goal.type == "node" then
-		return { bar = false, text = type(g.need) == "number" and string.format(L["panel.progress.nodeNeed"], g.need) or L["panel.progress.node"] }
+		return { bar = true, value = math.max(0, math.min(g.level, g.level - g.need)), max = g.level, text = text }
 	end
-	return { bar = false, text = "" }
+	return { bar = false, text = text }
+end
+
+-- Pinned line text from the planner's pinnedCard ("Angeheftet: <name> · <missing>"); nil without a pin.
+function Panel.PinnedText(profile, result, catalogue, currentKey)
+	local pin = profile and profile.pinned
+	if not pin then return nil end
+	local entry = catalogue and catalogue.achievements and catalogue.achievements[pin.achievementID]
+	local parts = { entry and entry.name or string.format(L["plan.unnamed"], pin.achievementID or 0) }
+	local card = result and result.pinnedCard
+	if card and card.achievementID == pin.achievementID and card.missing then
+		if card.charKey ~= currentKey then parts[#parts + 1] = Text.name(card.charKey) end
+		parts[#parts + 1] = Text.missing(card)
+	end
+	return string.format(L["panel.pinned"], table.concat(parts, " · "))
 end
 
 local function sortedKeys(t, less)
@@ -81,7 +95,7 @@ function Panel.GoalMenuModel(catalogue, settings, trees, completed)
 	if #groups > 0 then menu[#menu + 1] = { text = L["panel.menu.challenge"], children = groups } end
 
 	local treeGroups = {}
-	for index, treeID in ipairs(def.treeIDs) do
+	for _, treeID in ipairs(def.treeIDs) do
 		local tree = type(trees) == "table" and trees[treeID]
 		if type(tree) == "table" and not tree.incomplete and tree.nodes then
 			local nodes = {}
@@ -89,10 +103,11 @@ function Panel.GoalMenuModel(catalogue, settings, trees, completed)
 				local node = tree.nodes[nodeID]
 				local maxRanks = node.maxRanks or 1
 				if (node.currentRank or 0) < maxRanks then
-					nodes[#nodes + 1] = { text = string.format(L["panel.menu.nodeN"], nodeID, node.currentRank or 0, maxRanks), action = { kind = "node", a = nodeID } }
+					local name = ns.Provider and ns.Provider.nodeName(tree.configID, nodeID) or string.format(L["hooks.node"], nodeID)
+					nodes[#nodes + 1] = { text = string.format(L["panel.menu.nodeN"], name, node.currentRank or 0, maxRanks), action = { kind = "node", a = nodeID } }
 				end
 			end
-			if #nodes > 0 then treeGroups[#treeGroups + 1] = { text = string.format(L["panel.menu.tree"], index), children = nodes } end
+			if #nodes > 0 then treeGroups[#treeGroups + 1] = { text = L["tree." .. treeID], children = nodes } end
 		end
 	end
 	if #treeGroups > 0 then menu[#menu + 1] = { text = L["panel.menu.node"], children = treeGroups } end
@@ -225,6 +240,20 @@ local function layoutPlan(c)
 	else
 		c.empty:Hide()
 	end
+	local pinnedText = Panel.PinnedText(payload.profile, result, payload.catalogue, payload.currentKey)
+	if pinnedText then
+		c.pinned:SetText(pinnedText)
+		place(c.pinned, c, 0, y):Show()
+		place(c.unpin, c, INNER - c.unpin:GetWidth(), y):Show()
+		y = y - math.max(c.pinned:GetStringHeight(), 20) - 2
+		local card = result and result.pinnedCard
+		local progress = card and card.achievementID == payload.profile.pinned.achievementID and Text.ProgressFor(card)
+		c.progress:Set(progress or nil)
+		if progress then place(c.progress, c, 0, y); y = y - 12 end
+		y = y - GAP + 2
+	else
+		c.pinned:Hide(); c.unpin:Hide(); c.progress:Hide()
+	end
 	for i, wrap in ipairs(c.rows) do
 		local card = showRows and cards[i]
 		if card then
@@ -247,8 +276,12 @@ local function layoutPlan(c)
 		if opp.missing then text = text .. " · " .. Text.missing(opp) end
 		c.here:SetText(string.format(L["ui.here"], text))
 		place(c.here, c, 0, y):Show()
+		c.hereButton.achievementID = opp.achievementID
+		c.hereButton:Show()
 	else
 		c.here:Hide()
+		c.hereButton.achievementID = nil
+		c.hereButton:Hide()
 	end
 end
 
@@ -289,6 +322,14 @@ local function layoutSettings(c)
 	y = y - 4
 	local locked = payload.profile.ui.tracker.locked ~= false
 	c.lock:SetLabel(L[locked and "panel.set.unlock" or "panel.set.lock"])
+	local pct = math.floor((tonumber(payload.profile.ui.tracker.bgAlpha) or 0.6) * 100 + 0.5)
+	c.alphaLabel:SetText(string.format(L["panel.set.alpha"], pct))
+	place(c.alphaLabel, c, 0, y)
+	c.updating = true
+	if c.slider then c.slider:SetValue(pct) end
+	c.updating = nil
+	if c.slider then place(c.slider, c, 4, y - 18) else place(c.minus, c, 0, y - 16); place(c.plus, c, 60, y - 16) end
+	y = y - 44
 	place(c.lock, c, 0, y)
 	place(c.reset, c, 0, y - 24)
 end
@@ -302,8 +343,23 @@ local function createPlan(c)
 	c.status:SetJustifyH("LEFT"); c.status:SetWidth(INNER)
 	c.empty = Style.Font(c:CreateFontString(nil, "OVERLAY"), "sub", "sub")
 	c.empty:SetJustifyH("LEFT"); c.empty:SetWidth(INNER)
+	c.pinned = Style.Font(c:CreateFontString(nil, "OVERLAY"), "sub", "text")
+	c.pinned:SetJustifyH("LEFT"); c.pinned:SetWidth(INNER - 70)
+	c.progress = Style.ProgressBar(c, INNER)
+	c.unpin = Style.Button(c, L["ui.unpin"])
+	c.unpin:SetScript("OnClick", function() if core then core:Unpin() end end)
 	c.here = Style.Font(c:CreateFontString(nil, "OVERLAY"), "sub", "sub")
 	c.here:SetJustifyH("LEFT"); c.here:SetWidth(INNER)
+	c.hereButton = CreateFrame("Button", nil, c)
+	c.hereButton:SetAllPoints(c.here)
+	c.hereButton:SetScript("OnClick", function(self) if self.achievementID and core then core:ShowChallenge(self.achievementID) end end)
+	c.hereButton:SetScript("OnMouseUp", function(self, button)
+		if button == "MiddleButton" and self.achievementID and core and self:IsMouseOver() then core:SetChallengeGoal(self.achievementID, true) end
+	end)
+	c.hereButton:SetScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, "ANCHOR_RIGHT"); GameTooltip:AddLine(L["hooks.hint.goal"], 0.7, 0.7, 0.7); GameTooltip:Show()
+	end)
+	c.hereButton:SetScript("OnLeave", function(self) if GameTooltip:IsOwned(self) then GameTooltip:Hide() end end)
 	c.rows = {}
 	for i = 1, MAX_ROWS do
 		local wrap = CreateFrame("Frame", nil, c)
@@ -343,6 +399,28 @@ local function createSettings(c)
 		end)
 		c.checks[i] = check
 	end
+	c.alphaLabel = Style.Font(c:CreateFontString(nil, "OVERLAY"), "row")
+	c.alphaLabel:SetJustifyH("LEFT")
+	local function currentPct() return math.floor((tonumber(core and core.db.profile.ui.tracker.bgAlpha) or 0.6) * 100 + 0.5) end
+	for _, template in ipairs({ "MinimalSliderTemplate", "OptionsSliderTemplate" }) do
+		local ok, slider = pcall(CreateFrame, "Slider", nil, c, template)
+		if ok and slider then
+			slider:SetSize(180, 16)
+			slider:SetMinMaxValues(0, 100); slider:SetValueStep(5)
+			if slider.SetObeyStepOnDrag then slider:SetObeyStepOnDrag(true) end
+			for _, key in ipairs({ "Low", "High", "Text" }) do if slider[key] then slider[key]:Hide() end end
+			slider:SetScript("OnValueChanged", function(_, value)
+				if core and not c.updating then core:SetTrackerAlpha(value) end
+			end)
+			c.slider = slider
+			break
+		end
+	end
+	if not c.slider then -- neither template exists: +/- buttons in steps of 10
+		c.minus, c.plus = Style.Button(c, "-"), Style.Button(c, "+")
+		c.minus:SetScript("OnClick", function() if core then core:SetTrackerAlpha(currentPct() - 10) end end)
+		c.plus:SetScript("OnClick", function() if core then core:SetTrackerAlpha(currentPct() + 10) end end)
+	end
 	c.lock = Style.Button(c, L["panel.set.unlock"])
 	c.lock:SetScript("OnClick", function()
 		if not core then return end
@@ -365,7 +443,14 @@ local function createFrame()
 	f.title = Style.Font(f:CreateFontString(nil, "OVERLAY"), "title", "title")
 	f.title:SetText(L["ui.title"])
 	f.goal = Style.Font(f:CreateFontString(nil, "OVERLAY"), "goal", "accent")
-	f.goal:SetJustifyH("LEFT"); f.goal:SetWidth(INNER)
+	f.goal:SetJustifyH("LEFT")
+	f.clear = Style.Button(f, "\195\151") -- "×"
+	f.clear:SetSize(20, 20)
+	f.clear:SetScript("OnClick", function() if core then core:SetGoal("clear") end end)
+	f.clear:SetScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, "ANCHOR_RIGHT"); GameTooltip:SetText(L["panel.goal.clear"]); GameTooltip:Show()
+	end)
+	f.clear:SetScript("OnLeave", function() GameTooltip:Hide() end)
 	f.barBg = f:CreateTexture(nil, "ARTWORK")
 	f.barBg:SetColorTexture(unpack(Style.color.button))
 	f.barFill = f:CreateTexture(nil, "OVERLAY")
@@ -393,7 +478,11 @@ function Panel.Refresh()
 	place(f.title, f, PAD, y)
 	y = y - 22
 	f.goal:SetText(ns.UI.GoalText() or "")
-	place(f.goal, f, PAD, y)
+	place(f.clear, f, WIDTH - PAD - 20, y)
+	f.clear:SetShown(Panel.GoalClearVisible(payload.profile.goal))
+	f.goal:ClearAllPoints()
+	f.goal:SetPoint("TOPLEFT", f, "TOPLEFT", PAD, y)
+	f.goal:SetPoint("TOPRIGHT", f.clear, "TOPLEFT", -4, 0) -- wraps left of the button
 	y = y - f.goal:GetStringHeight() - 6
 
 	local model = Panel.ProgressModel(payload.profile.goal, payload.result)
@@ -481,6 +570,7 @@ function Panel.Sync()
 		if not frame:IsShown() then
 			dock(h)
 			frame:Show()
+			if ns.Hooks and ns.Hooks.Rescan then pcall(ns.Hooks.Rescan) end -- pages build lazily; attach to new buttons
 			if payload then Panel.Refresh() else core:RenderUI() end
 		end
 	elseif frame and frame:IsShown() then
