@@ -126,4 +126,36 @@ eq(pf(card({ missing = false })), nil, "no missing")
 eq(pf({ status = "done" }), nil); eq(pf({ status = "unknown" }), nil); eq(pf(nil), nil)
 eq(pf(with({ kind = "level", n = 30, total = 25 })).done, 0, "clamped")
 
+-- player-facing text must not carry internal dev wording
+local forbidden = { -- { pattern, caseInsensitive }
+	{ "etappe", true }, { "stage %d", true }, { "phase %d", true }, { "mvp", true }, { "ponytail", true },
+	{ "architecture", true }, { "ledger", true }, { "todo", true }, { "fixme", true },
+	{ "milestone 0", true }, { "meilenstein", true },
+	{ "%f[%w]D%d%d?%f[%W]", false }, { "%f[%w]R%d%f[%W]", false }, { "%f[%w]O%d%f[%W]", false }, { "%f[%w]V%d%f[%W]", false },
+}
+local offenders = {}
+local function scan(where, text)
+	if type(text) ~= "string" then return end
+	for _, rule in ipairs(forbidden) do
+		local hit = (rule[2] and text:lower() or text):find(rule[1])
+		if hit then offenders[#offenders + 1] = where .. ": /" .. rule[1] .. "/ in \"" .. text .. "\"" end
+	end
+end
+local toc = assert(io.open("LegacyNavigator.toc"))
+for line in toc:lines() do
+	local k, v = line:match("^## (Title[%w%-]*):%s*(.*)$")
+	if not k then k, v = line:match("^## (Notes[%w%-]*):%s*(.*)$") end
+	if k then scan("toc " .. k, v) end
+end
+toc:close()
+for k, v in pairs(loc.enUS) do scan("enUS key " .. tostring(k), k); scan("enUS[" .. tostring(k) .. "]", v) end
+for k, v in pairs(loc.deDE) do scan("deDE[" .. tostring(k) .. "]", v) end
+for _, name in ipairs({ "Core.lua", "UI.lua", "Panel.lua", "Tracker.lua", "Hooks.lua" }) do
+	local h = assert(io.open(name)); local code = h:read("*a"); h:close()
+	for args in code:gmatch(":Print%((.-)%)") do
+		for lit in args:gmatch('"([^"]*)"') do scan(name .. " Print", lit) end
+	end
+end
+if #offenders > 0 then error("internal wording reaches players:\n  " .. table.concat(offenders, "\n  "), 0) end
+
 print("text_spec: all checks passed")

@@ -1,11 +1,12 @@
 ## Interface: 16001
 ## Title: Legacy Navigator
-## Notes: Legacy goal planner for WoW Forever. Etappe 4: panel, tracker and Legacy-window hooks on top of the read-only core.
+## Notes: Plans your next Legacy points: goals, best next steps for the current character and alts, tracker and Legacy-window integration.
+## Notes-deDE: Plant deine nächsten Legacy-Punkte: Ziele, beste nächste Schritte für den aktuellen Charakter und Twinks, Tracker und Anbindung ans Legacy-Fenster.
 ## Author: sb
 ## Version: 0.1.0
 ## OptionalDeps: EllesmereUI
 ## SavedVariables: LegacyNavigatorDiagDB, LegacyNavigatorDB
-## IconTexture: Interface\Icons\INV_Misc_Map_01
+## IconTexture: Interface\AddOns\LegacyNavigator\Textures\icon
 embeds.xml
 Diag.lua
 Locale.lua

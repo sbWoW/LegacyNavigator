@@ -227,7 +227,7 @@ local function setupMinimap()
 	local icon = LibStub and LibStub("LibDBIcon-1.0", true)
 	if not (ldb and icon) then return end -- lib missing: no minimap button, nothing else changes
 	local object = ldb:GetDataObjectByName("LegacyNavigator") or ldb:NewDataObject("LegacyNavigator", {
-		type = "launcher", text = L["ui.title"], icon = "Interface\\Icons\\INV_Misc_Map_01",
+		type = "launcher", text = L["ui.title"], icon = "Interface\\AddOns\\LegacyNavigator\\Textures\\icon",
 		OnClick = function(_, button) if button == "LeftButton" then toggle() end end,
 		OnTooltipShow = function(tooltip)
 			tooltip:AddLine(L["ui.title"])
