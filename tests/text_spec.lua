@@ -74,11 +74,12 @@ for key in src:gmatch('L%["([^"]-)"%]') do
 		error("Core uses text without deDE entry: " .. key)
 	end
 end
-local f2 = assert(io.open("UI.lua")); local ui = f2:read("*a"); f2:close()
+local ui = ""
+for _, name in ipairs({ "UI.lua", "Tracker.lua" }) do local f2 = assert(io.open(name)); ui = ui .. f2:read("*a"); f2:close() end
 for key in ui:gmatch('L%["([^"]-)"%]') do
 	if loc.enUS[key] == nil or loc.deDE[key] == nil then error("UI uses text missing in enUS/deDE: " .. key) end
 end
-for _, key in ipairs({ "ui.pin", "ui.pinnedBtn", "ui.here", "ui.legacy", "legacy.combat", "legacy.locked", "legacy.preview", "legacy.error" }) do
+for _, key in ipairs({ "ui.pin", "ui.pinnedBtn", "ui.here", "ui.legacy", "legacy.combat", "legacy.error", "tracker.header", "tracker.here", "tracker.done", "tracker.next" }) do
 	if loc.enUS[key] == nil or loc.deDE[key] == nil then error("UI button key " .. key) end
 end
 -- dynamically built keys in Core ("plan.reason." .. x, L[self.states[domain]]) are covered by these lists

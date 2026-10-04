@@ -91,7 +91,7 @@ C_SkillInfo = { GetNumSkillLines = function() return 0 end }
 C_Map = { GetBestMapForUnit = function() return 1411 end }
 
 local ns = {}
-for _, file in ipairs({ "Locale.lua", "Definitions.lua", "Model.lua", "Planner.lua", "Provider.lua", "Core.lua" }) do
+for _, file in ipairs({ "Locale.lua", "Definitions.lua", "Model.lua", "Planner.lua", "Provider.lua", "Tracker.lua", "Core.lua" }) do
 	assert(loadfile(file))("LegacyNavigator", ns)
 end
 core:OnInitialize()
@@ -146,6 +146,24 @@ core:Replan()
 eq(core.lastResult, good, "planner error dropped lastResult")
 check(core.planError, "planError not set")
 
+-- Etappe 4: Core clears the pin when it reports completion; the render payload carries the one-shot event.
+do
+	local payloads = {}
+	ns.Tracker.Render = function(p) payloads[#payloads + 1] = p end -- the real Render needs frames
+	core:TogglePin(result.cards[1])
+	local pinnedID = db.profile.pinned.achievementID
+	info[pinnedID][4] = true -- the client now reports it completed (points > 0 in the fixture)
+	core:StartScan()
+	for _ = 1, 5000 do
+		if #timers == 0 then break end
+		table.remove(timers, 1)()
+	end
+	eq(db.profile.pinned, nil, "completed pin must be cleared by Core")
+	local last = payloads[#payloads]
+	check(last.completed and last.completed.kind == "completed" and last.completed.achievementID == pinnedID, "payload carries completed event")
+	info[pinnedID][4] = false
+end
+
 -- D22: Zum Legacy-Fenster. Blizzard globals are stubbed; Provider is the only caller.
 do
 	local calls, renown, combat, shownFrame = {}, 0, false, false
@@ -163,47 +181,81 @@ do
 	db.profile.settings = { activities = {}, preview = false } -- the stub db has no AceDB defaults
 
 	combat = true
-	local ok, reason = P.openLegacyWindow(true)
+	local ok, reason = P.openLegacyWindow()
 	check(ok == false and reason == "combat" and count("toggle") + count("show") == 0, "combat must refuse")
+	eq(core:LegacyBlock(), "combat", "button blocked in combat")
 	combat = false
+	eq(core:LegacyBlock(), nil, "locked: button not blocked (D24)")
 
 	renown = 3
-	ok = P.openLegacyWindow(false)
+	ok = P.openLegacyWindow()
 	check(ok and count("toggle") == 1, "unlocked must call ToggleLegacySystemUI")
-	shownFrame = true; P.openLegacyWindow(false)
+	shownFrame = true; P.openLegacyWindow()
 	eq(count("toggle"), 1, "already shown must not toggle it closed")
 	shownFrame = false
 
 	reset(); renown = 0
-	ok, reason = P.openLegacyWindow(false)
-	check(ok == false and reason == "locked" and count("toggle") + count("load") + count("show") == 0, "locked without preview")
-	core:OpenLegacyWindow()
-	check(saved[1]:find("noch gesperrt") or saved[1]:find("still locked"), "locked message")
-	check(saved[1]:find("Earn a point.", 1, true), "Blizzard locked tooltip appended")
-	eq(core:LegacyBlock(), "locked", "button explains the lock")
-
-	reset()
-	ok, reason = P.openLegacyWindow(true)
-	check(ok and reason == "preview" and count("load") == 1 and count("show") == 1 and count("toggle") == 0, "preview loads + shows")
+	ok, reason = P.openLegacyWindow()
+	check(ok and reason == nil and count("load") == 1 and count("show") == 1 and count("toggle") == 0, "locked opens anyway: load + show")
 	LegacySystemFrame_LoadUI = function() hit("loadui") end
-	P.openLegacyWindow(true)
+	P.openLegacyWindow()
 	eq(count("loadui"), 1, "LegacySystemFrame_LoadUI preferred"); eq(count("load"), 1)
 	LegacySystemFrame_LoadUI = nil
-
-	db.profile.settings.preview = true
-	reset()
-	core:OpenLegacyWindow(); core:OpenLegacyWindow()
-	eq(#saved, 1, "preview note shown once")
-	eq(core:LegacyBlock(), nil, "preview on: button not blocked")
+	reset(); core:OpenLegacyWindow()
+	eq(#saved, 0, "locked open prints nothing")
 
 	ShowUIPanel = function() error("boom") end
 	reset()
-	ok, reason = P.openLegacyWindow(true)
+	ok, reason = P.openLegacyWindow()
 	check(ok == false and reason == "error", "ShowUIPanel error handled")
 	check(pcall(core.OpenLegacyWindow, core), "Core must not throw")
 	check(saved[#saved]:find("boom"), "error message shown")
-	core:SetSetting("preview", "on"); eq(db.profile.settings.preview, true, "/lnav set preview on")
-	core:SetSetting("preview", "off"); eq(db.profile.settings.preview, false, "/lnav set preview off")
+	core:SetSetting("preview", "on")
+	check(saved[#saved]:find("Usage"), "preview setting is gone")
+end
+
+-- Tracker.Content (pure): selection logic without frames.
+do
+	local T = ns.Tracker
+	local function data(over)
+		local d = {
+			profile = { characters = { ["Realm-Beta"] = { classFile = "MAGE" } } }, currentKey = "Realm-Alpha",
+			catalogue = { achievements = { [1] = { name = "One" }, [2] = { name = "Two" }, [3] = { name = "Three" }, [4] = { name = "Four" } } },
+			result = { cards = {}, alternatives = {}, ["local"] = {} },
+		}
+		for k, v in pairs(over or {}) do d[k] = v end
+		return d
+	end
+	local function opp(id, key) return { achievementID = id, charKey = key or "Realm-Alpha", missing = { kind = "criteria", n = 2, ctype = "area" } } end
+	eq(T.Content(data()), nil, "empty -> nil")
+	eq(T.Content(nil), nil, "no payload -> nil")
+
+	local d = data()
+	d.profile.pinned = { achievementID = 1, charKey = "Realm-Alpha" }
+	local c = T.Content(d)
+	check(c and c.pinnedLine and c.pinnedLine.text:find("One", 1, true), "pin -> pinned line")
+	eq(#c.localLines, 0)
+
+	d.profile.pinned = { achievementID = 1, charKey = "Realm-Beta" }
+	c = T.Content(d)
+	eq(c.pinnedLine.charKey, "Realm-Beta", "twink pin carries charKey")
+	check(c.pinnedLine.text:find("Beta", 1, true), "twink name shown")
+
+	d.result["local"] = { opp(1), opp(2), opp(3), opp(4, "Realm-Beta") }
+	c = T.Content(d)
+	eq(#c.localLines, 2, "max 2 local lines")
+	check(c.localLines[1].text:find("Two", 1, true) and c.localLines[2].text:find("Three", 1, true), "pin excluded, order kept")
+	d.profile.pinned = nil
+	d.result["local"] = { opp(4, "Realm-Beta") }
+	eq(T.Content(d), nil, "other character's local ignored")
+
+	d.completed = { kind = "completed", achievementID = 1, charKey = "Realm-Alpha" }
+	d.result.cards = { { action = "pin", achievementID = 1, charKey = "Realm-Alpha" }, { action = "pin", achievementID = 2, charKey = "Realm-Alpha" } }
+	c = T.Content(d)
+	check(c and c.completed and c.completed.text:find("One", 1, true), "completed state")
+	eq(c.completed.nextCard.achievementID, 2, "next skips the completed challenge")
+	check(c.completed.nextText:find("Two", 1, true), "next text")
+	eq(c.pinnedLine, nil, "no pin after completion")
 end
 
 print("integration_spec: all assertions passed")

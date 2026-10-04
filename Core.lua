@@ -12,13 +12,13 @@ local RESCAN_EVENTS = {
 }
 local UI_DEFAULTS = {
 	overlay = { point = "TOP", x = 0, y = -160 }, -- top-anchored: the overlay grows downward
-	tracker = { point = "TOPRIGHT", x = -60, y = -240, locked = true },
+	tracker = { point = "TOPRIGHT", x = -60, y = -260, locked = true, shown = true, custom = false }, -- custom: dragged, saved point replaces the Objective Tracker anchor
 }
 
 local defaults = {
 	global = { schema = 1 },
 	profile = {
-		settings = { activities = def.defaultActivities, allowCharacterSwitch = true, preview = false },
+		settings = { activities = def.defaultActivities, allowCharacterSwitch = true },
 		ui = UI_DEFAULTS, -- AceDB copies defaults on write, so saved positions never alias this table
 		minimap = { hide = false }, -- LibDBIcon saved state
 		seenIntro = false, -- the overlay opens by itself once, at the very first start
@@ -62,6 +62,7 @@ function Core:OnEnable()
 		local ok, err = pcall(ns.UI.Init, self)
 		if not ok then self:Print("UI init failed: " .. tostring(err)) end
 	end
+	if ns.Tracker and ns.Tracker.Init then self:CallUI(ns.Tracker.Init, self) end
 end
 
 -- Readiness ---------------------------------------------------------------------------------------
@@ -197,6 +198,7 @@ function Core:FinishScan()
 	local profile = self.db.profile
 	if saved and Model.pinCompleted(completedBefore, profile.account and profile.account.completed, profile.pinned, self.catalogue) then
 		event = { kind = "completed", achievementID = profile.pinned.achievementID, charKey = profile.pinned.charKey }
+			profile.pinned = nil -- reported once; the tracker shows the follow-up, nothing is auto-pinned
 	end
 	self:Replan(event)
 	if self.rescan then self.rescan = false; self:StartScan() end
@@ -358,15 +360,16 @@ end
 
 -- Everything the overlay needs; UI reads Core state only through this payload (and the helpers it gets in Init).
 function Core:RenderUI(event)
-	if not (ns.UI and ns.UI.Render) then return end
-	self:CallUI(ns.UI.Render, {
+	local payload = {
 		result = self.lastResult, planError = self.planError, loadingKept = self.loadingKept, resultAt = self.lastResultAt,
 		states = self.states, catalogue = self.catalogue, profile = self.db.profile,
 		currentKey = self.currentKey or Provider.readCharacter().key,
 		scanning = self.scan ~= nil or self.pollTimer ~= nil,
 		combatPending = self.pendingScan == true or (self.scan ~= nil and self.scan.paused == true),
 		incomplete = self.lastReported, completed = event, now = Provider.serverTime(),
-	})
+	}
+	if ns.UI and ns.UI.Render then self:CallUI(ns.UI.Render, payload) end
+	if ns.Tracker and ns.Tracker.Render then self:CallUI(ns.Tracker.Render, payload) end
 end
 
 -- Pin/unpin one card (Model.togglePin); spend/chooseGoal cards carry no achievement and cannot be pinned.
@@ -385,44 +388,42 @@ function Core:ResetPositions()
 	local ui = self.db.profile.ui
 	for name, default in pairs(UI_DEFAULTS) do
 		ui[name] = ui[name] or {}
-		for _, key in ipairs({ "point", "x", "y" }) do ui[name][key] = default[key] end
+		for _, key in ipairs({ "point", "x", "y", "custom" }) do ui[name][key] = default[key] end
 	end
 	if ns.UI and ns.UI.ApplyPositions then self:CallUI(ns.UI.ApplyPositions) end
+	if ns.Tracker then self:CallUI(ns.Tracker.ApplyPositions) end
 	self:Print(L["Positions reset."])
 end
 
 function Core:SetTrackerLocked(locked)
 	self.db.profile.ui.tracker.locked = locked
 	self:Print(L[locked and "Tracker locked." or "Tracker unlocked."])
-	if ns.UI and ns.UI.ApplyPositions then self:CallUI(ns.UI.ApplyPositions) end
+	if ns.Tracker then self:CallUI(ns.Tracker.ApplyPositions) end
 end
 
--- Zum Legacy-Fenster (D22). Provider decides; Core only words the outcome.
+function Core:SetTrackerShown(value)
+	local flag
+	if value == "on" then flag = true elseif value == "off" then flag = false end
+	if flag == nil then self:Print(L["Usage: /lnav tracker on|off"]); return end
+	self.db.profile.ui.tracker.shown = flag
+	self:Print(L[flag and "Tracker on." or "Tracker off."])
+	self:RenderUI()
+end
+
+-- Zum Legacy-Fenster (D22/D24). Provider decides; Core only words the outcome.
 function Core:LegacyMessage(reason, detail)
 	if reason == "combat" then return L["legacy.combat"] end
-	if reason == "locked" then
-		local tip = Provider.legacyLockedTip()
-		return L["legacy.locked"] .. (tip and (" - " .. tip) or "")
-	end
 	return string.format(L["legacy.error"], tostring(detail))
 end
 
--- Why the button cannot act right now: nil | "combat" | "locked", plus the text for the tooltip.
+-- Why the button cannot act right now: nil | "combat", plus the text for the tooltip.
 function Core:LegacyBlock()
-	local reason
-	if Provider.inCombat() then reason = "combat"
-	elseif not self.db.profile.settings.preview and not Provider.legacyUnlocked() then reason = "locked" end
-	if reason then return reason, self:LegacyMessage(reason) end
+	if Provider.inCombat() then return "combat", self:LegacyMessage("combat") end
 end
 
 function Core:OpenLegacyWindow()
-	local ok, reason, detail = Provider.openLegacyWindow(self.db.profile.settings.preview == true)
-	if not ok then
-		self:Print(self:LegacyMessage(reason, detail))
-	elseif reason == "preview" and not self.previewNoted then
-		self.previewNoted = true
-		self:Print(L["legacy.preview"])
-	end
+	local ok, reason, detail = Provider.openLegacyWindow()
+	if not ok then self:Print(self:LegacyMessage(reason, detail)) end
 	return ok, reason
 end
 
@@ -526,13 +527,13 @@ function Core:SetGoal(kind, a, b)
 	end
 end
 
-local SETTINGS = { pvp = true, dungeon = true, raid = true, switch = true, preview = true }
+local SETTINGS = { pvp = true, dungeon = true, raid = true, switch = true }
 function Core:SetSetting(name, value)
 	local flag
 	if value == "on" then flag = true elseif value == "off" then flag = false end
-	if not SETTINGS[name or ""] or flag == nil then self:Print(L["Usage: /lnav set pvp|dungeon|raid|switch|preview on|off"]); return end
+	if not SETTINGS[name or ""] or flag == nil then self:Print(L["Usage: /lnav set pvp|dungeon|raid|switch on|off"]); return end
 	local settings = self.db.profile.settings
-	if name == "switch" then settings.allowCharacterSwitch = flag elseif name == "preview" then settings.preview = flag else settings.activities[name] = flag end
+	if name == "switch" then settings.allowCharacterSwitch = flag else settings.activities[name] = flag end
 	self:Print(string.format(L["Setting %s: %s"], name, flag and L["on"] or L["off"]))
 	self:Replan()
 end
@@ -547,6 +548,8 @@ function Core:OnSlash(input)
 		self:PrintStatus(string.lower(input):match("^%s*%S+%s+(%S+)") == "log")
 	elseif command == "unlock" or command == "lock" then
 		self:SetTrackerLocked(command == "lock")
+	elseif command == "tracker" then
+		self:SetTrackerShown(string.lower(input):match("^%s*%S+%s+(%S+)"))
 	elseif command == "reset" then
 		self:ResetPositions()
 	elseif command == "debug" then -- dev aid: exercises the planner-error state of the UI
@@ -569,6 +572,6 @@ function Core:OnSlash(input)
 		self:Print(L["Refresh started."])
 		if self.pollTimer then self:CheckReady() elseif not Provider.isReady() then self:StartPoll() else self:StartScan() end
 	else
-		self:Print(L["Use /lnav (overlay), /lnav status, /lnav refresh, /lnav plan, /lnav goal, /lnav set, /lnav legacy, /lnav unlock, /lnav lock, /lnav reset or /lnav diag."])
+		self:Print(L["Use /lnav (overlay), /lnav status, /lnav refresh, /lnav plan, /lnav goal, /lnav set, /lnav legacy, /lnav unlock, /lnav lock, /lnav reset, /lnav tracker or /lnav diag."])
 	end
 end

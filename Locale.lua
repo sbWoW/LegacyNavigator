@@ -16,7 +16,7 @@ local deDE = {
 	["Data not ready yet. Try /lnav refresh."] = "Daten noch nicht bereit. /lnav refresh versuchen.",
 	["Scan incomplete, snapshot not saved: %s"] = "Scan unvollständig, Stand nicht gespeichert: %s",
 	["Refresh started."] = "Aktualisierung gestartet.",
-	["Use /lnav (overlay), /lnav status, /lnav refresh, /lnav plan, /lnav goal, /lnav set, /lnav legacy, /lnav unlock, /lnav lock, /lnav reset or /lnav diag."] = "Nutze /lnav (Overlay), /lnav status, /lnav refresh, /lnav plan, /lnav goal, /lnav set, /lnav legacy, /lnav unlock, /lnav lock, /lnav reset oder /lnav diag.",
+	["Use /lnav (overlay), /lnav status, /lnav refresh, /lnav plan, /lnav goal, /lnav set, /lnav legacy, /lnav unlock, /lnav lock, /lnav reset, /lnav tracker or /lnav diag."] = "Nutze /lnav (Overlay), /lnav status, /lnav refresh, /lnav plan, /lnav goal, /lnav set, /lnav legacy, /lnav unlock, /lnav lock, /lnav reset, /lnav tracker oder /lnav diag.",
 	["Incomplete scans logged: %d (newest last; /lnav status log shows all)"] = "Unvollständige Scans protokolliert: %d (neueste zuletzt; /lnav status log zeigt alle)",
 	["  %s build %s: %s"] = "  %s Build %s: %s",
 	["Tracker locked."] = "Tracker gesperrt.", ["Tracker unlocked."] = "Tracker entsperrt.", ["Positions reset."] = "Positionen zurückgesetzt.",
@@ -91,16 +91,17 @@ local deDE = {
 	["Goal set."] = "Ziel gesetzt.",
 	["Goal cleared."] = "Ziel gelöscht.",
 	["Usage: /lnav goal points N | renown N | challenge ID | node ID [ranks] | clear"] = "Aufruf: /lnav goal points N | renown N | challenge ID | node ID [Ränge] | clear",
-	["Usage: /lnav set pvp|dungeon|raid|switch|preview on|off"] = "Aufruf: /lnav set pvp|dungeon|raid|switch|preview on|off",
+	["Usage: /lnav set pvp|dungeon|raid|switch on|off"] = "Aufruf: /lnav set pvp|dungeon|raid|switch on|off",
 	["Setting %s: %s"] = "Einstellung %s: %s",
 	["on"] = "an", ["off"] = "aus",
 	["Planner error: %s"] = "Planer-Fehler: %s",
 	-- Legacy window (D22)
 	["ui.legacy"] = "Zum Legacy-Fenster",
 	["legacy.combat"] = "Nicht im Kampf",
-	["legacy.locked"] = "Legacy-Fenster noch gesperrt (erster Legacy-Punkt nötig)",
-	["legacy.preview"] = "Vorschau: Fenster trotz Sperre geöffnet - Inhalte können leer sein",
 	["legacy.error"] = "Legacy-Fenster konnte nicht geöffnet werden: %s",
+	["tracker.header"] = "Legacy", ["tracker.here"] = "Hier", ["tracker.done"] = "%s – erledigt!",
+	["tracker.next"] = "Nächster: %s · klicken zum Anheften", ["Tracker on."] = "Tracker an.", ["Tracker off."] = "Tracker aus.",
+	["Usage: /lnav tracker on|off"] = "Aufruf: /lnav tracker on|off",
 }
 
 local enUS = {
@@ -156,7 +157,7 @@ local enUS = {
 	["plan.data.stale"] = "as of %s",
 	["plan.data.staleUnknown"] = "as of unknown date",
 	["plan.unnamed"] = "Task %d",
-	["Use /lnav (overlay), /lnav status, /lnav refresh, /lnav plan, /lnav goal, /lnav set, /lnav legacy, /lnav unlock, /lnav lock, /lnav reset or /lnav diag."] = "Use /lnav (overlay), /lnav status, /lnav refresh, /lnav plan, /lnav goal, /lnav set, /lnav legacy, /lnav unlock, /lnav lock, /lnav reset or /lnav diag.",
+	["Use /lnav (overlay), /lnav status, /lnav refresh, /lnav plan, /lnav goal, /lnav set, /lnav legacy, /lnav unlock, /lnav lock, /lnav reset, /lnav tracker or /lnav diag."] = "Use /lnav (overlay), /lnav status, /lnav refresh, /lnav plan, /lnav goal, /lnav set, /lnav legacy, /lnav unlock, /lnav lock, /lnav reset, /lnav tracker or /lnav diag.",
 	["ui.title"] = "Legacy Navigator", ["ui.binding"] = "Toggle Legacy Navigator",
 	["ui.goal.none"] = "Goal: none - best next steps (/lnav goal to set one)",
 	["ui.goal.points"] = "Goal: %d points", ["ui.goal.renown"] = "Goal: renown level %d",
@@ -173,9 +174,10 @@ local enUS = {
 	["ui.minimap.hint"] = "Left-click: toggle overlay", ["ui.here"] = "Here: %s",
 	["ui.legacy"] = "To Legacy window",
 	["legacy.combat"] = "Not in combat",
-	["legacy.locked"] = "Legacy window still locked (first Legacy point needed)",
-	["legacy.preview"] = "Preview: window opened despite the lock - contents may be empty",
 	["legacy.error"] = "Could not open the Legacy window: %s",
+	["tracker.header"] = "Legacy", ["tracker.here"] = "Here", ["tracker.done"] = "%s – done!",
+	["tracker.next"] = "Next: %s · click to pin", ["Tracker on."] = "Tracker on.", ["Tracker off."] = "Tracker off.",
+	["Usage: /lnav tracker on|off"] = "Usage: /lnav tracker on|off",
 }
 
 local L = enUS

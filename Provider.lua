@@ -194,27 +194,17 @@ function Provider.legacyUnlocked()
 	return type(renown) == "number" and renown > 0
 end
 
-function Provider.legacyLockedTip()
-	if type(LEGACY_MICRO_BUTTON_LOCKED_TOOLTIP) == "string" and LEGACY_MICRO_BUTTON_LOCKED_TOOLTIP ~= "" then
-		return LEGACY_MICRO_BUTTON_LOCKED_TOOLTIP
-	end
-end
-
--- Returns ok, reason, detail: true | true,"preview" | false,"combat"|"locked"|"error",message.
-function Provider.openLegacyWindow(preview)
+-- Returns ok, reason, detail: true | false,"combat"|"error",message. Locked or not, the window opens (D24).
+function Provider.openLegacyWindow()
 	if Provider.inCombat() then return false, "combat" end
-	local unlocked = Provider.legacyUnlocked()
-	if not unlocked and not preview then return false, "locked" end
 	local ok, err = pcall(function()
-		if unlocked then
-			if not (LegacySystemFrame and LegacySystemFrame:IsShown()) then ToggleLegacySystemUI() end
-			return
-		end
+		if LegacySystemFrame and LegacySystemFrame:IsShown() then return end
+		if Provider.legacyUnlocked() then return ToggleLegacySystemUI() end
 		if type(LegacySystemFrame_LoadUI) == "function" then LegacySystemFrame_LoadUI()
 		else C_AddOns.LoadAddOn("Blizzard_LegacySystem") end
 		if not LegacySystemFrame then error("LegacySystemFrame missing") end
 		ShowUIPanel(LegacySystemFrame)
 	end)
 	if not ok then return false, "error", string.sub(tostring(err), 1, 200) end
-	return true, (not unlocked) and "preview" or nil
+	return true
 end

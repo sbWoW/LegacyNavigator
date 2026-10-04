@@ -102,10 +102,10 @@ local function openItemName(card, item)
 	return helper and helper.name or tostring(item)
 end
 
-local function showTooltip(row)
+local function showTooltip(row, anchor)
 	local card = row.card
 	if not card or not card.achievementID then return end
-	GameTooltip:SetOwner(row, "ANCHOR_RIGHT")
+	GameTooltip:SetOwner(row, type(anchor) == "string" and anchor or "ANCHOR_RIGHT")
 	GameTooltip:AddLine(achievementName(card.achievementID), 1, 1, 1)
 	local why = Text.why(card)
 	if #why > 0 then
@@ -121,7 +121,9 @@ local function showTooltip(row)
 	GameTooltip:Show()
 end
 
--- "Zum Legacy-Fenster" buttons (D22): visible whenever offered; dimmed + explained when it cannot act now.
+UI.ShowTooltip = showTooltip -- shared with the tracker rows
+
+-- "Zum Legacy-Fenster" buttons (D22/D24): visible whenever offered; dimmed + explained only in combat.
 local function legacyOnEnter(button)
 	local reason, text = core and core:LegacyBlock()
 	if not reason then return end
