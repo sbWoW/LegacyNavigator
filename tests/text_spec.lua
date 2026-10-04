@@ -35,7 +35,7 @@ eq(de.missing(with({ kind = "criteria", n = 1, ctype = "boss" })), "1 Boss offen
 eq(de.missing(with({ kind = "level", n = 1 })), "1 Stufe fehlt")
 
 -- contribution
-eq(de.contribution(card()), "", "point: no row segment (D28)")
+eq(de.contribution(card()), "", "point: no row segment")
 eq(de.pointNote(card()), "+1 Legacy-Punkt bei Abschluss")
 eq(en.pointNote(card()), "+1 Legacy point on completion")
 eq(de.pointNote(with({ kind = "criteria", n = 1, ctype = "boss" })), "Letzter Schritt: +1 Legacy-Punkt", "exactly one open sub-goal")
@@ -45,7 +45,7 @@ eq(de.pointNote(card({ contribution = "progress" })), "")
 eq(de.contribution(card({ contribution = "progress" }), "Explore Durotar"), "Fortschritt für Explore Durotar")
 eq(en.contribution(card({ contribution = "progress", name = "Explore Durotar" })), "progress for Explore Durotar")
 
--- goal block (D28)
+-- goal block
 eq(de.goalLine(nil), "Kein Ziel – beste nächste Schritte"); eq(en.goalLine(nil), "No goal – best next steps")
 eq(de.goalLine({ type = "points", need = 5 }), "Ziel: 5 Punkte ausgeben"); eq(en.goalLine({ type = "points", need = 5 }), "Goal: spend 5 points")
 eq(de.goalLine({ type = "renown", level = 7 }), "Ziel: Renown-Stufe 7"); eq(en.goalLine({ type = "renown", level = 7 }), "Goal: renown level 7")
@@ -114,7 +114,7 @@ for _, key in ipairs({ "account", "character", "catalogue", "treesMissing", "nee
 	if loc.enUS["plan.reason." .. key] == nil or loc.deDE["plan.reason." .. key] == nil then error("reason key " .. key) end
 end
 
--- ProgressFor (D30)
+-- ProgressFor
 local pf = en.ProgressFor
 eq(pf(with({ kind = "level", n = 24, total = 25 })).text, "1/25", "level")
 eq(pf(with({ kind = "criteria", n = 6, total = 6, ctype = "boss" })).text, "0/6", "criteria")

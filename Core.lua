@@ -4,8 +4,8 @@ local L, def, Model, Provider, Planner, Text = ns.L, ns.Definitions, ns.Model, n
 local POLL_SECONDS, POLL_DEADLINE = 1, 30 -- poll every second, give up after 30 s of client time
 local CRITERIA_COALESCE = 1
 local TICK = 0.01 -- next frame; one scan step per tick keeps the frame time flat
-local SCAN_LOG_MAX = 20 -- E7: ring buffer of rejected ("incomplete") scans in the global DB, for the O3 investigation
--- Rescan triggers beyond CRITERIA_UPDATE (O6). Registered under pcall: a name the client does not know must not break loading.
+local SCAN_LOG_MAX = 20 -- ring buffer of rejected ("incomplete") scans in the global DB
+-- Rescan triggers beyond CRITERIA_UPDATE. Registered under pcall: a name the client does not know must not break loading.
 local RESCAN_EVENTS = {
 	"PLAYER_LEVEL_UP", "SKILL_LINES_CHANGED", "TRAIT_TREE_CURRENCY_INFO_UPDATED",
 	"TRAIT_CONFIG_UPDATED", "MAJOR_FACTION_RENOWN_LEVEL_CHANGED",
@@ -69,7 +69,7 @@ end
 -- Readiness ---------------------------------------------------------------------------------------
 
 function Core:PLAYER_ENTERING_WORLD()
-	if self.started then return end -- later loading screens change nothing in Etappe 1
+	if self.started then return end -- later loading screens change nothing
 	self.started = true
 	Model.beginSession(self.states, self.db.profile, Provider.readCharacter().key)
 	self:StartPoll()
@@ -194,7 +194,7 @@ function Core:FinishScan()
 			self:Print(name .. ": " .. message)
 		end
 	end
-	-- Pinned challenge newly completed by this scan -> one-shot event for the UI (Etappe 4 tracker shows it).
+	-- Pinned challenge newly completed by this scan -> one-shot event for the UI (the tracker shows it).
 	local event
 	local profile = self.db.profile
 	if saved and Model.pinCompleted(completedBefore, profile.account and profile.account.completed, profile.pinned, self.catalogue) then
@@ -205,7 +205,7 @@ function Core:FinishScan()
 	if self.rescan then self.rescan = false; self:StartScan() end
 end
 
--- E7 (O3): why was a scan rejected? Newest last; global DB so every character feeds the same log.
+-- why was a scan rejected? Newest last; global DB so every character feeds the same log.
 function Core:LogIncomplete(incomplete, raw)
 	local parts = {}
 	for _, domain in ipairs({ "account", "character", "points", "skills", "location" }) do
@@ -225,18 +225,18 @@ end
 
 -- Events ------------------------------------------------------------------------------------------
 
--- Shared by CRITERIA_UPDATE and the O6 events: bursts coalesce into one rescan.
+-- Shared by CRITERIA_UPDATE and the extra rescan events: bursts coalesce into one rescan.
 function Core:RequestRescan()
 	if self.scan then self.rescan = true; return end -- the running scan may have read stale criteria
 	if not self.currentKey or self.criteriaTimer then return end -- nothing scanned yet / burst already queued
-	-- ponytail: this rescan re-reads trees and catalogue too; reuse the previous trees if it measures slow.
+	-- this rescan re-reads trees and catalogue too; reuse the previous trees if it measures slow.
 	self.criteriaTimer = self:ScheduleTimer(function()
 		self.criteriaTimer = nil
 		self:StartScan()
 	end, CRITERIA_COALESCE)
 end
 
--- Zone change reads the location only; no scan (O6/D15).
+-- Zone change reads the location only; no scan.
 function Core:ZONE_CHANGED_NEW_AREA()
 	if not self.currentKey then return end
 	self.location = Provider.readLocation()
@@ -325,7 +325,7 @@ function Core:BuildPlanInput()
 	}
 end
 
--- R2/D3: the single replan path. A planner error keeps the last good result; the UI shows the error state.
+-- the single replan path. A planner error keeps the last good result; the UI shows the error state.
 -- While data is loading the last good result stays on screen (with its date) instead of an empty card list.
 function Core:Replan(event)
 	local pending = self.pendingGoalPin
@@ -437,7 +437,7 @@ function Core:SetMinimapShown(flag)
 	self:RenderUI()
 end
 
--- Zum Legacy-Fenster (D22/D24). Provider decides; Core only words the outcome.
+-- Zum Legacy-Fenster. Provider decides; Core only words the outcome.
 function Core:LegacyMessage(reason, detail)
 	if reason == "combat" then return L["legacy.combat"] end
 	return string.format(L["legacy.error"], tostring(detail))
@@ -482,7 +482,7 @@ function Core:JumpToCard(card)
 	return self:ShowChallenge(Core.JumpTarget(self.catalogue, card))
 end
 
--- D25: /lnav, minimap, key and tracker click toggle the Legacy window (the panel follows it).
+-- /lnav, minimap, key and tracker click toggle the Legacy window (the panel follows it).
 function Core:ToggleLegacyWindow()
 	local ok, reason, detail = Provider.toggleLegacyWindow()
 	if not ok then self:Print(self:LegacyMessage(reason, detail)) end
@@ -563,7 +563,7 @@ function Core:GoalProblem(goal)
 	end
 end
 
--- D29: setting a goal also pins (never unpins). Challenge goal: that challenge; otherwise the first card of the new plan.
+-- setting a goal also pins (never unpins). Challenge goal: that challenge; otherwise the first card of the new plan.
 -- A goal set while the plan is still loading stays pending and is resolved by the next non-loading Replan.
 function Core:PinForGoal(goal)
 	local profile, card = self.db.profile, nil
@@ -612,7 +612,7 @@ function Core:SetGoal(kind, a, b, quiet)
 	end
 end
 
--- D27: middle-click on a challenge (Blizzard button or our row). climb: resolve a point-less zone helper to its chain.
+-- middle-click on a challenge (Blizzard button or our row). climb: resolve a point-less zone helper to its chain.
 function Core:SetChallengeGoal(id, climb)
 	local profile = self.db.profile
 	local resolve = climb and ns.Hooks.GoalForCard or ns.Hooks.GoalForChallenge

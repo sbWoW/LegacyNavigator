@@ -176,19 +176,19 @@ local function cmpWays(a, b)
 	return a.charKey < b.charKey
 end
 
--- Total order of architecture.md 8.2 rule 5 (D19, D20): hasCur, dataState, prep, relative remainder, proximity, n, achievementID.
+-- Total order: hasCur, dataState, prep, relative remainder, proximity, n, achievementID.
 local function cmpResults(a, b, here)
 	local x, y = a.best, b.best
 	if a.hasCur ~= b.hasCur then return a.hasCur end
 	if x.dataState ~= y.dataState then return x.dataState == "confirmed" end
 	local pa, pb = prep(a.ach.activity), prep(b.ach.activity)
 	if pa ~= pb then return pa < pb end
-	-- D19: smallest relative remainder open/total first, compared as exact fractions (x.n/x.total < y.n/y.total
+	-- smallest relative remainder open/total first, compared as exact fractions (x.n/x.total < y.n/y.total
 	-- <=> x.n*y.total < y.n*x.total, integers only, no float ties). A cross-multiplied fraction order is a total
 	-- preorder (totals > 0), so it stays transitive for table.sort.
 	local lx, ly = x.n * y.total, y.n * x.total
 	if lx ~= ly then return lx < ly end
-	-- D20: proximity only breaks an exact ratio tie; then absolute n, then id.
+	-- proximity only breaks an exact ratio tie; then absolute n, then id.
 	local la, lb = bool(x.mapID ~= nil and x.mapID == here), bool(y.mapID ~= nil and y.mapID == here)
 	if la ~= lb then return la < lb end
 	if x.n ~= y.n then return x.n < y.n end
@@ -287,7 +287,7 @@ function Planner.plan(input)
 				return finish("reachable")
 			end
 		elseif goal.type == "renown" then
-			-- O1: lifetime earned points (account.renown), cosmetic levels; never a spend card.
+			-- lifetime earned points (account.renown), cosmetic levels; never a spend card.
 			local level, cap = goal.level, def.maxRenown or 65
 			if type(level) ~= "number" or level % 1 ~= 0 or level < 1 then return finish("invalid", "needInvalid") end
 			if level > cap then result.reasonArg = cap; return finish("invalid", "needAbove") end

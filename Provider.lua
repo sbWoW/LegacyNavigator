@@ -191,7 +191,7 @@ function Provider.achievementIcon(id)
 	return (select(10, guard("GetAchievementInfo", GetAchievementInfo, id)))
 end
 
--- Perk name (D26): node -> entry -> definition -> spell name. Every step guarded; fallback "Vorteil <id>".
+-- Perk name: node -> entry -> definition -> spell name. Every step guarded; fallback "Vorteil <id>".
 function Provider.nodeName(configID, nodeID)
 	local traits, spells = C_Traits, C_Spell
 	local name
@@ -208,7 +208,7 @@ function Provider.nodeName(configID, nodeID)
 	return string.format(ns.L["hooks.node"], nodeID or 0)
 end
 
--- Legacy window (D22). The only place that touches the Blizzard window globals. Opening is a plain window
+-- Legacy window. The only place that touches the Blizzard window globals. Opening is a plain window
 -- toggle outside combat; nothing is spent here (spending happens on the user's clicks inside Blizzard's frame).
 -- Gate = renown of faction 2802 > 0, same as Blizzard's ToggleLegacySystemUI.
 function Provider.legacyUnlocked()
@@ -216,7 +216,7 @@ function Provider.legacyUnlocked()
 	return type(renown) == "number" and renown > 0
 end
 
--- Returns ok, reason, detail: true | false,"combat"|"error",message. Locked or not, the window opens (D24).
+-- Returns ok, reason, detail: true | false,"combat"|"error",message. Locked or not, the window opens.
 function Provider.openLegacyWindow()
 	if Provider.inCombat() then return false, "combat" end
 	local ok, err = pcall(function()
@@ -234,7 +234,7 @@ function Provider.openLegacyWindow()
 	return true
 end
 
--- D25: one entry for /lnav, minimap, key and tracker click. Open window -> close it (HideUIPanel under pcall).
+-- one entry for /lnav, minimap, key and tracker click. Open window -> close it (HideUIPanel under pcall).
 function Provider.toggleLegacyWindow()
 	if Provider.inCombat() then return false, "combat" end
 	if LegacySystemFrame and LegacySystemFrame:IsShown() then

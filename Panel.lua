@@ -1,6 +1,6 @@
 local _, ns = ...
 
--- Docked panel (architecture.md Etappe 3b, 15A). Our own frame, parented to UIParent and anchored with a plain
+-- Docked panel. Our own frame, parented to UIParent and anchored with a plain
 -- SetPoint next to LegacySystemFrame; shown only while that window is shown. Blizzard's frame is only read
 -- (IsShown, size, edges), never hooked, modified or reparented. The pure helpers (ProgressModel, GoalMenuModel,
 -- SettingsModel, CharacterRows, DockSide) have no frames and are tested offline.
@@ -288,7 +288,7 @@ local function layoutChars(c)
 			line:Hide()
 		end
 	end
-	-- ponytail: no scrolling; characters beyond MAX_CHARS are only counted.
+	-- no scrolling; characters beyond MAX_CHARS are only counted.
 	if #rows > MAX_CHARS then
 		c.more:SetText(string.format(L["ui.tooltip.more"], #rows - MAX_CHARS))
 		place(c.more, c, 0, y):Show()

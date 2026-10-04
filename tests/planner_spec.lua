@@ -255,7 +255,7 @@ end
 do
 	local cat = fx.cat.subset(62382, 728, 900002)
 	local all = Planner.plan(input(cat, { [A] = char(cat) })).cards[1]
-	eq(all.achievementID, 62382); eq(all.missing.n, 3, "open areas (2 + 1), not open helpers (O5)")
+	eq(all.achievementID, 62382); eq(all.missing.n, 3, "open areas (2 + 1), not open helpers")
 	-- one helper done on the character, the other has 2 unvisited areas (one of its criteria partly done)
 	local c = char(cat, { done = { 112687, 831 } })
 	local one = Planner.plan(input(cat, { [A] = c })).cards[1]
@@ -290,7 +290,7 @@ do
 	eq(Planner.plan(input(cat, chars, { location = { mapID = 1420 } })).cards[1].achievementID, 90003)
 end
 
--- D19: within one activity the smallest RELATIVE remainder (open/total, exact fractions) comes first.
+-- within one activity the smallest RELATIVE remainder (open/total, exact fractions) comes first.
 do
 	local cat = fx.cat.subset(62003, 62382, 728, 900002, 90001)
 	local chars = { [A] = char(cat, { classFile = "ROGUE", level = 1, done = { 91001, 91002, 91003, 91004, 91005 } }) }
@@ -310,7 +310,7 @@ do
 	eq(Planner.plan(input(cat, { [A] = c2 })).cards[1].achievementID, 62003)
 end
 
--- D20: proximity only breaks an exact ratio tie; it never beats a smaller relative remainder.
+-- proximity only breaks an exact ratio tie; it never beats a smaller relative remainder.
 do
 	local cat = fx.cat.subset(62003, 62382, 728, 900002)
 	local chars = { [A] = char(cat, { classFile = "ROGUE", level = 1 }) }
@@ -391,7 +391,7 @@ do
 	eq(Planner.plan(node).goal.need, 22, "default ranks = maxRanks")
 end
 
--- O1: goal types. renown = lifetime earned (account.renown), cap 65, never a spend card.
+-- goal types. renown = lifetime earned (account.renown), cap 65, never a spend card.
 do
 	local cat = fx.cat.subset(61994, 90001)
 	local function rn(level, renown, available)
@@ -414,7 +414,7 @@ do
 	inp.goal.need = 17; eq(Planner.plan(inp).reason, "needAbove")
 end
 
--- O5: Explorer counts open AREAS of open helpers; helpers with unknown criteria drop the achievement.
+-- Explorer counts open AREAS of open helpers; helpers with unknown criteria drop the achievement.
 do
 	local cat = fx.cat.subset(62382, 728, 900002)
 	local card = Planner.plan(input(cat, { [A] = char(cat) })).cards[1]

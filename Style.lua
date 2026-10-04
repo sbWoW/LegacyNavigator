@@ -1,6 +1,6 @@
 local _, ns = ...
 
--- Flat look for our own frames (architecture.md 12.5). Plain textures only, game font objects as default.
+-- Flat look for our own frames. Plain textures only, game font objects as default.
 -- With EllesmereUI loaded its RegisterSkin API paints the frames instead (primitives only; nothing copied).
 local Style = {}
 ns.Style = Style
@@ -98,7 +98,7 @@ function Style.Divider(parent)
 	return tex
 end
 
--- D30: flat 3-px bar (accent fill on a dim track, follows the Ellesmere accent) with "done/total" at its right end.
+-- flat 3-px bar (accent fill on a dim track, follows the Ellesmere accent) with "done/total" at its right end.
 -- bar:Set(progress) shows it (progress = Text.ProgressFor result, or true-full via full) or hides it for nil.
 function Style.ProgressBar(parent, width)
 	local f = CreateFrame("Frame", nil, parent)

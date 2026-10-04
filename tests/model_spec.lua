@@ -102,14 +102,14 @@ do
 	check(Model.persist(store, Model.snapshot(raw, 4000)) and raw.skills == false, "skills-less snapshot refused or raw mutated")
 	eq(store.characters["Realm-Alpha"].capturedAt, 4000)
 	eq(store.characters["Realm-Alpha"].skills[2937].rank, 20, "stored skills were erased")
-	-- O4: carried-over skills keep their OLD stamp and are stale; fresh ones are confirmed with the new stamp
+	-- carried-over skills keep their OLD stamp and are stale; fresh ones are confirmed with the new stamp
 	eq(store.characters["Realm-Alpha"].skills.capturedAt, 1000, "carried-over skills got a fresh date")
 	eq(store.characters["Realm-Alpha"].skills.state, "stale")
 	check(Model.persist(store, Model.snapshot(rawScan(), 5000)), "fresh scan refused")
 	eq(store.characters["Realm-Alpha"].skills.capturedAt, 5000); eq(store.characters["Realm-Alpha"].skills.state, "confirmed")
 end
 
--- O2: per-character earned evidence for completed achievements; account rule unchanged.
+-- per-character earned evidence for completed achievements; account rule unchanged.
 do
 	local mine = rawAch(102, true, {}, 0); mine.wasEarnedByMe = true
 	local other = rawAch(103, true, {}, 1); other.wasEarnedByMe = false; other.earnedBy = "Someone"
@@ -490,7 +490,7 @@ do
 	check(goal("node 10 0") == nil); eq(goal("node 10 2").ranks, 2); eq(goal("node 10").nodeID, 10)
 end
 
--- Etappe 3: events, Replan, pin, UI hand-off, scan-incomplete log.
+-- events, Replan, pin, UI hand-off, scan-incomplete log.
 do
 	local h = fixture({ currencyNil = true })
 	for _, event in ipairs({ "PLAYER_LEVEL_UP", "SKILL_LINES_CHANGED", "TRAIT_TREE_CURRENCY_INFO_UPDATED", "ZONE_CHANGED_NEW_AREA" }) do
@@ -524,7 +524,7 @@ do
 	h:fire("ZONE_CHANGED_NEW_AREA")
 	check(#renders > before and h.core.scan == nil, "zone change: no replan or started a scan")
 	check(not renders.shown, "intro opened while data is still loading")
-	-- bare /lnav toggles the Legacy window (D25)
+	-- bare /lnav toggles the Legacy window
 	local toggled = 0
 	h.ns.Provider.toggleLegacyWindow = function() toggled = toggled + 1; return true end
 	h.core:OnSlash(""); eq(toggled, 1)

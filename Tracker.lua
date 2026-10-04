@@ -1,7 +1,7 @@
 local _, ns = ...
 
--- Tracker (architecture.md Etappe 4): a flat, chrome-less block under the quest tracker. Own unprotected frames
--- only. Anchor (R3/D4): a plain SetPoint below ObjectiveTrackerFrame, decided inside our own Render; no hooks on
+-- Tracker: a flat, chrome-less block under the quest tracker. Own unprotected frames
+-- only. Anchor: a plain SetPoint below ObjectiveTrackerFrame, decided inside our own Render; no hooks on
 -- Blizzard frames, no reparenting. Tracker.Content is pure (no frames) so it loads and tests offline.
 local L, Text, Style = ns.L, ns.Text, ns.Style
 local Tracker = {}
@@ -44,7 +44,7 @@ function Tracker.Content(data, event)
 		out.pinnedLine = {
 			text = table.concat(parts, " · "), charKey = charKey, achievementID = pinned.achievementID,
 			card = card and card.missing and card or { achievementID = pinned.achievementID, charKey = pinned.charKey },
-			progress = Text.ProgressFor(card), -- D30
+			progress = Text.ProgressFor(card),
 		}
 	end
 	local pinnedID = pinned and pinned.achievementID
@@ -121,7 +121,7 @@ local function lowestModule()
 	return found
 end
 
--- R3/D4: decided here and nowhere else (our Render, PLAYER_ENTERING_WORLD, lock/reset); never from a Blizzard script.
+-- decided here and nowhere else (our Render, PLAYER_ENTERING_WORLD, lock/reset); never from a Blizzard script.
 function Tracker.Anchor()
 	if not (frame and core) then return end
 	local ui = core.db.profile.ui.tracker
@@ -261,7 +261,7 @@ function Tracker.Refresh()
 	else
 		frame.pinned:Hide()
 	end
-	-- D30: bar under the pinned line; full during the green "done" phase, hidden without a reliable total
+	-- bar under the pinned line; full during the green "done" phase, hidden without a reliable total
 	local pl = content and content.pinnedLine
 	local progress = pl and not done and not frame.pinned.onClick and pl.progress or nil
 	if progress then frame.lastProgress = progress elseif not done then frame.lastProgress = nil end

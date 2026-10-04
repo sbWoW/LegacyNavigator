@@ -1,6 +1,6 @@
 local _, ns = ...
 
--- Middle-click-to-set-goal inside Blizzard's Legacy window (D26, D27). Only HookScript on unprotected buttons (OnMouseUp,
+-- Middle-click-to-set-goal inside Blizzard's Legacy window. Only HookScript on unprotected buttons (OnMouseUp,
 -- OnEnter) and hooksecurefunc on the challenge mixin's Init. Nothing is replaced; left and right clicks keep
 -- their Blizzard paths. Everything runs under pcall; a changed Blizzard layout costs the
 -- feature, never the window. The pure helpers (GoalForChallenge, GoalForNode) are tested offline.
@@ -26,7 +26,7 @@ function Hooks.GoalForChallenge(catalogue, settings, completed, id)
 	return { kind = "challenge", a = id }
 end
 
--- Our own rows (D27): a point-less zone helper cannot be a goal, so climb to the chain that contains it (depth <= 6).
+-- Our own rows: a point-less zone helper cannot be a goal, so climb to the chain that contains it (depth <= 6).
 -- Returns the same as GoalForChallenge for the resolved id.
 function Hooks.GoalForCard(catalogue, settings, completed, id)
 	local all = catalogue and catalogue.achievements or {}

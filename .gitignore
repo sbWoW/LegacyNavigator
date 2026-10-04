@@ -12,3 +12,6 @@ Thumbs.db
 
 # third-party libs: .pkgmeta externals / tools/fetch-libs.sh
 Libs/
+
+# local-only notes
+.internal/

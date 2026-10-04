@@ -1,6 +1,6 @@
 local _, ns = ...
 
--- Status strings only (Etappe 1). Keys are the enUS text.
+-- Status strings only. Keys are the enUS text.
 local deDE = {
 	["Legacy Navigator status (build %s)"] = "Legacy Navigator Status (Build %s)",
 	["Domains:"] = "Domänen:",
@@ -20,7 +20,7 @@ local deDE = {
 	["Incomplete scans logged: %d (newest last; /lnav status log shows all)"] = "Unvollständige Scans protokolliert: %d (neueste zuletzt; /lnav status log zeigt alle)",
 	["  %s build %s: %s"] = "  %s Build %s: %s",
 	["Tracker locked."] = "Tracker gesperrt.", ["Tracker unlocked."] = "Tracker entsperrt.", ["Positions reset."] = "Positionen zurückgesetzt.",
-	-- shared UI texts (Etappe 3)
+	-- shared UI texts
 	["ui.title"] = "Legacy Navigator", ["ui.binding"] = "Legacy Navigator ein/aus",
 	["ui.goal.none"] = "Kein Ziel – beste nächste Schritte",
 	["ui.goal.points"] = "Ziel: %d Punkte ausgeben", ["ui.goal.renown"] = "Ziel: Renown-Stufe %d", ["ui.goal.named"] = "Ziel: %s",
@@ -35,7 +35,7 @@ local deDE = {
 	["ui.empty"] = "Keine passende Empfehlung mit den aktuellen Einstellungen", ["ui.empty.hint"] = "Versuche: /lnav set dungeon on, /lnav set raid on oder /lnav set switch on",
 	["ui.tooltip.why"] = "Warum", ["ui.tooltip.open"] = "Offene Teilziele", ["ui.tooltip.more"] = "+ %d weitere",
 	["ui.minimap.hint"] = "Linksklick: Legacy-Fenster ein/aus", ["ui.here"] = "Hier: %s",
-	-- planner output (Etappe 2)
+	-- planner output
 	["plan.header.none"] = "Plan (Orientierung, kein Ziel)",
 	["plan.header.points"] = "Plan - Ziel: %d Punkte",
 	["plan.header.node"] = "Plan - Ziel: Vorteil %d (Mindestbedarf, ungeprüft): %d Punkte",
@@ -96,7 +96,7 @@ local deDE = {
 	["Setting %s: %s"] = "Einstellung %s: %s",
 	["on"] = "an", ["off"] = "aus",
 	["Planner error: %s"] = "Planer-Fehler: %s",
-	-- Legacy window (D22)
+	-- Legacy window
 	["ui.legacy"] = "Zum Legacy-Fenster",
 	["legacy.combat"] = "Nicht im Kampf",
 	["legacy.error"] = "Legacy-Fenster konnte nicht geöffnet werden: %s",
@@ -107,7 +107,7 @@ local deDE = {
 	["Usage: /lnav tracker alpha 0-100"] = "Aufruf: /lnav tracker alpha 0-100",
 	["tracker.unlocked"] = "Entsperrt – ziehen, /lnav lock zum Sperren", ["panel.set.alpha"] = "Tracker-Hintergrund: %d %%",
 	["Minimap button on."] = "Minimap-Knopf an.", ["Minimap button off."] = "Minimap-Knopf aus.",
-	-- docked panel (Etappe 3b)
+	-- docked panel
 	["panel.goal.change"] = "Ziel ändern", ["panel.goal.clear"] = "Ziel löschen",
 	["panel.tab.plan"] = "Plan", ["panel.tab.chars"] = "Charaktere", ["panel.tab.settings"] = "Einstellungen",
 		["panel.menu.missing"] = "Das Zielmenü braucht MenuUtil, das in diesem Client fehlt. Ziele per Mittelklick oder /lnav goal setzen.",
@@ -121,7 +121,7 @@ local deDE = {
 	["panel.set.unlock"] = "Tracker entsperren", ["panel.set.lock"] = "Tracker sperren", ["panel.set.reset"] = "Positionen zurücksetzen",
 	["panel.options.text"] = "Das Legacy-Navigator-Panel erscheint rechts neben dem Legacy-Fenster. Dort stellst du Ziel und Optionen ein.",
 	["panel.options.open"] = "Einstellungen öffnen",
-	-- Hooks in Blizzard's Legacy window (D26)
+	-- Hooks in Blizzard's Legacy window
 	["hooks.node"] = "Vorteil %d", ["hooks.goalSet"] = "Ziel gesetzt: %s",
 	["hooks.hint.goal"] = "Mittelklick: als Ziel setzen",
 	["hooks.reason.unknown"] = "Nicht im Katalog (Daten noch nicht bereit?)", ["hooks.reason.noPoints"] = "Bringt keinen Legacy-Punkt",
@@ -209,7 +209,7 @@ local enUS = {
 	["Usage: /lnav tracker alpha 0-100"] = "Usage: /lnav tracker alpha 0-100",
 	["tracker.unlocked"] = "Unlocked – drag, /lnav lock to lock", ["panel.set.alpha"] = "Tracker background: %d %%",
 	["Minimap button on."] = "Minimap button on.", ["Minimap button off."] = "Minimap button off.",
-	-- docked panel (Etappe 3b)
+	-- docked panel
 	["panel.goal.change"] = "Change goal", ["panel.goal.clear"] = "Clear goal",
 	["panel.tab.plan"] = "Plan", ["panel.tab.chars"] = "Characters", ["panel.tab.settings"] = "Settings",
 		["panel.menu.missing"] = "The goal menu needs MenuUtil, which this client lacks. Set goals by middle-click or /lnav goal.",
@@ -223,7 +223,7 @@ local enUS = {
 	["panel.set.unlock"] = "Unlock tracker", ["panel.set.lock"] = "Lock tracker", ["panel.set.reset"] = "Reset positions",
 	["panel.options.text"] = "The Legacy Navigator panel appears next to the Legacy window. Set your goal and options there.",
 	["panel.options.open"] = "Open settings",
-	-- Hooks in Blizzard's Legacy window (D26)
+	-- Hooks in Blizzard's Legacy window
 	["hooks.node"] = "Perk %d", ["hooks.goalSet"] = "Goal set: %s",
 	["hooks.hint.goal"] = "Middle-click: set as goal",
 	["hooks.reason.unknown"] = "Not in the catalogue (data not ready yet?)", ["hooks.reason.noPoints"] = "Grants no Legacy point",
@@ -237,7 +237,7 @@ if GetLocale and GetLocale() == "deDE" then L = deDE end
 ns.L = setmetatable({}, { __index = function(_, key) return L[key] or enUS[key] or key end })
 ns.Locale = { enUS = enUS, deDE = deDE } -- exposed for tests (every enUS key needs a deDE entry)
 
--- Shared text formatter (R5): one wording for chat, overlay, tracker and tooltip (architecture.md 12.2).
+-- Shared text formatter: one wording for chat, overlay, tracker and tooltip.
 local L2 = ns.L
 local Text = {}
 ns.Text = Text
@@ -251,7 +251,7 @@ function Text.missing(card)
 	return plural("plan.missing." .. m.kind, m.n)
 end
 
--- D30: progress of the pinned step as { done, total, text = "done/total" }; nil without a reliable total.
+-- progress of the pinned step as { done, total, text = "done/total" }; nil without a reliable total.
 -- level: total = threshold level, done = current level (= total - n); criteria: total = all criteria.
 function Text.ProgressFor(card)
 	local m = card and card.missing
@@ -263,18 +263,18 @@ end
 
 -- name is the achievement name (the card only carries its ID).
 function Text.contribution(card, name)
-	if card.contribution == "point" then return "" end -- D28: every challenge gives one point, not worth a segment
+	if card.contribution == "point" then return "" end -- every challenge gives one point, not worth a segment
 	return string.format(L2["plan.contribution.progress"], name or card.name or string.format(L2["plan.unnamed"], card.achievementID or 0))
 end
 
--- Tooltip line for point cards (D28): "+1 Legacy point on completion" or, with exactly one open sub-goal, "Last step: ...".
+-- Tooltip line for point cards: "+1 Legacy point on completion" or, with exactly one open sub-goal, "Last step: ...".
 function Text.pointNote(card)
 	if card.contribution ~= "point" then return "" end
 	local m = card.missing
 	return L2[(m and m.kind == "criteria" and m.n == 1) and "plan.contribution.pointLast" or "plan.contribution.point"]
 end
 
--- Goal block (D28): big line = what the goal is; sub line = what is missing + caveat, once. name = node/challenge name.
+-- Goal block: big line = what the goal is; sub line = what is missing + caveat, once. name = node/challenge name.
 function Text.goalLine(goal, name)
 	if not goal then return L2["ui.goal.none"] end
 	if goal.type == "points" then return string.format(L2["ui.goal.points"], goal.need or 0) end

@@ -80,7 +80,7 @@ eq(load("deDE").GoalMenuModel(nil, nil, nil)[1].text, "Kein Ziel (Orientierung)"
 settings.activities.raid = true
 eq(#P.GoalMenuModel(catalogue, settings, trees, {})[4].children[1].children, 3, "raid enabled: 12, 15, 16")
 
--- Hooks pure helpers (D26)
+-- Hooks pure helpers
 local H = (function()
 	local ns2 = { L = setmetatable({}, { __index = function(_, k) return k end }) }
 	assert(loadfile("Hooks.lua"))("LegacyNavigator", ns2)
@@ -96,7 +96,7 @@ settings.activities.raid = false
 eq(select(2, H.GoalForChallenge(catalogue, settings, {}, 12)), "hooks.reason.disabled")
 settings.activities.raid = true
 eq(select(2, H.GoalForChallenge(nil, nil, nil, 1)), "hooks.reason.unknown")
-do -- D27: rows resolve to a goal; point-less zone helpers climb to their chain
+do -- rows resolve to a goal; point-less zone helpers climb to their chain
 	local cat = { achievements = {
 		[1] = { points = 1, activity = "dungeon", criteria = { { type = 8, assetID = 2 } } },
 		[2] = { points = 0, activity = "dungeon", criteria = { { type = 8, assetID = 3 } } },

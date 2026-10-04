@@ -1,5 +1,5 @@
 -- Run from the addon folder: lua tests/integration_spec.lua
--- O7/D16: client-shaped Provider stubs -> Core scan -> Model snapshot/persist -> Planner via Core:Replan.
+-- client-shaped Provider stubs -> Core scan -> Model snapshot/persist -> Planner via Core:Replan.
 local function check(value, message)
 	if not value then error(message or "assertion failed", 2) end
 end
@@ -111,7 +111,7 @@ eq(core.states.account, "confirmed")
 -- Plan via Core:Replan.
 local result = core.lastResult
 eq(result.status, "ok", "plan status")
--- D19: the smallest relative remainder leads within an activity: Novice Rogue 24/25 = 0.96 precedes the Explorer
+-- the smallest relative remainder leads within an activity: Novice Rogue 24/25 = 0.96 precedes the Explorer
 -- card 3/3 = 1.0; the level-1 rogue gets its own class challenge, no other class's.
 local novice
 for _, c in ipairs(result.cards) do
@@ -146,7 +146,7 @@ core:Replan()
 eq(core.lastResult, good, "planner error dropped lastResult")
 check(core.planError, "planError not set")
 
--- D29: setting a goal also pins; goal mode still delivers pinnedCard for a non-goal pin; clearing keeps the pin.
+-- setting a goal also pins; goal mode still delivers pinnedCard for a non-goal pin; clearing keeps the pin.
 do
 	core.forcePlanError = false
 	db.profile.settings = db.profile.settings or { activities = { solo = true } }
@@ -179,7 +179,7 @@ do
 	db.profile.pinned = nil
 end
 
--- Etappe 4: Core clears the pin when it reports completion; the render payload carries the one-shot event.
+-- Core clears the pin when it reports completion; the render payload carries the one-shot event.
 do
 	local payloads = {}
 	ns.Tracker.Render = function(p) payloads[#payloads + 1] = p end -- the real Render needs frames
@@ -197,7 +197,7 @@ do
 	info[pinnedID][4] = false
 end
 
--- D22: Zum Legacy-Fenster. Blizzard globals are stubbed; Provider is the only caller.
+-- Zum Legacy-Fenster. Blizzard globals are stubbed; Provider is the only caller.
 do
 	local calls, renown, combat, shownFrame = {}, 0, false, false
 	local function reset() for k in pairs(calls) do calls[k] = nil end; saved = {}; core.previewNoted = nil end
@@ -218,7 +218,7 @@ do
 	check(ok == false and reason == "combat" and count("toggle") + count("show") == 0, "combat must refuse")
 	eq(core:LegacyBlock(), "combat", "button blocked in combat")
 	combat = false
-	eq(core:LegacyBlock(), nil, "locked: button not blocked (D24)")
+	eq(core:LegacyBlock(), nil, "locked: button not blocked")
 
 	renown = 3
 	ok = P.openLegacyWindow()
@@ -237,7 +237,7 @@ do
 	reset(); core:OpenLegacyWindow()
 	eq(#saved, 0, "locked open prints nothing")
 
-	-- D25 toggle: shown -> HideUIPanel (pcall), hidden -> open, combat -> refuse
+	-- toggle: shown -> HideUIPanel (pcall), hidden -> open, combat -> refuse
 	HideUIPanel = function() hit("hide") end
 	shownFrame = true; reset()
 	check(P.toggleLegacyWindow() and count("hide") == 1, "shown: toggle hides")
@@ -373,7 +373,7 @@ do
 	EventRegistry, C_Timer = nil, nil
 end
 
--- Final-review cases: pin.charKey, Experienced pin with Novice open, pending goal-pin, completed-challenge goal, GoalForCard order.
+-- Regression cases: pin.charKey, Experienced pin with Novice open, pending goal-pin, completed-challenge goal, GoalForCard order.
 do
 	local P = ns.Planner
 	local cat = { achievements = {

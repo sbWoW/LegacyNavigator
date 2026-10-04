@@ -112,14 +112,14 @@ function Model.snapshot(raw, now)
 	local character = {
 		state = "confirmed", capturedAt = now, build = raw.build,
 		guid = raw.guid, classFile = raw.classFile, level = raw.level, points = raw.points, criteria = {},
-		earnedByMe = {}, -- O2: evidence per completed achievement; isAccountComplete stays the only rule
+		earnedByMe = {}, -- evidence per completed achievement; isAccountComplete stays the only rule
 	}
 	if type(now) ~= "number" then flag(incomplete, "character", "time") end
 	if not raw.key then flag(incomplete, "character", "key") end
 	if not raw.guid or not raw.classFile or type(raw.level) ~= "number" then flag(incomplete, "character", "identity") end
 	-- skills stay nil (unknown) and do not block the snapshot
 	if type(raw.skills) == "table" then
-		character.skills = { capturedAt = now, state = "confirmed" } -- O4: own stamp; string keys never clash with skillLineIDs
+		character.skills = { capturedAt = now, state = "confirmed" } -- own stamp; string keys never clash with skillLineIDs
 		for id, skill in pairs(raw.skills) do character.skills[id] = skill end
 	else flag(incomplete, "skills", "unreadable") end
 	if not raw.achievementsComplete then

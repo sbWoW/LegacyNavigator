@@ -1,6 +1,6 @@
 local _, ns = ...
 
--- Shared UI helpers (D25: the free-floating overlay is gone). Row component, goal/status text, tooltip, minimap
+-- Shared UI helpers (the free-floating overlay is gone). Row component, goal/status text, tooltip, minimap
 -- button and the toggle global; Tracker and Panel build on it. Data comes in through UI.Render(payload) from
 -- Core:RenderUI; UI.Init(core) is the only place the core object is received (UI loads before Core).
 local L, Text, Style = ns.L, ns.Text, ns.Style
@@ -131,7 +131,7 @@ function UI.GoalText() return payload and goalText() end
 function UI.StatusText() return payload and statusText() end
 UI.ColorName, UI.AchievementName = colorName, achievementName
 
--- "Zum Legacy-Fenster" buttons (D22/D24): visible whenever offered; dimmed + explained only in combat.
+-- "Zum Legacy-Fenster" buttons: visible whenever offered; dimmed + explained only in combat.
 local function legacyOnEnter(button)
 	local reason, text = core and core:LegacyBlock()
 	if not reason then return end
