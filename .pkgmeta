@@ -15,6 +15,7 @@ ignore:
   - docs
   - tests
   - tools
+  - media
   - Legacy-Navigator-Konzept-v0.1.md
   - ONPREM-HANDOFF.md
   - STARTPROMPT.txt
