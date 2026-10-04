@@ -1,0 +1,5 @@
+<Bindings>
+	<Binding name="LEGACYNAVIGATOR_TOGGLE" header="LEGACYNAVIGATOR" category="ADDONS">
+		LegacyNavigatorToggle()
+	</Binding>
+</Bindings>

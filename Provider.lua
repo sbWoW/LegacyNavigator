@@ -62,12 +62,12 @@ function Provider.readCategory(categoryID)
 	local total = guard("GetCategoryNumAchievements", GetCategoryNumAchievements, categoryID)
 	local list, complete = {}, type(total) == "number" and name ~= nil
 	for index = 1, (type(total) == "number" and total or 0) do
-		local id, achName, _, completed, _, _, _, _, _, _, _, _, wasEarnedByMe = guard("GetAchievementInfo", GetAchievementInfo, categoryID, index)
+		local id, achName, _, completed, _, _, _, _, _, _, _, _, wasEarnedByMe, earnedBy = guard("GetAchievementInfo", GetAchievementInfo, categoryID, index)
 		if id == nil then
 			complete = false
 		else
 			local ach = {
-				id = id, name = achName, categoryID = categoryID, completed = completed, wasEarnedByMe = wasEarnedByMe,
+				id = id, name = achName, categoryID = categoryID, completed = completed, wasEarnedByMe = wasEarnedByMe, earnedBy = earnedBy,
 				legacyPoints = guard("C_Traits.GetTraitCurrencyForAchievement", path(C_Traits, "GetTraitCurrencyForAchievement"), def.pointsCurrencyID, id),
 				criteria = {},
 			}

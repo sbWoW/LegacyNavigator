@@ -255,7 +255,7 @@ end
 do
 	local cat = fx.cat.subset(62382, 728, 900002)
 	local all = Planner.plan(input(cat, { [A] = char(cat) })).cards[1]
-	eq(all.achievementID, 62382); eq(all.missing.n, 2)
+	eq(all.achievementID, 62382); eq(all.missing.n, 3, "open areas (2 + 1), not open helpers (O5)")
 	-- one helper done on the character, the other has 2 unvisited areas (one of its criteria partly done)
 	local c = char(cat, { done = { 112687, 831 } })
 	local one = Planner.plan(input(cat, { [A] = c })).cards[1]
@@ -288,6 +288,48 @@ do
 	local near = Planner.plan(input(cat, chars, { location = { mapID = 1411 } }))
 	eq(near.cards[1].achievementID, 62382, "card in the current zone should come first")
 	eq(Planner.plan(input(cat, chars, { location = { mapID = 1420 } })).cards[1].achievementID, 90003)
+end
+
+-- D19: within one activity the smallest RELATIVE remainder (open/total, exact fractions) comes first.
+do
+	local cat = fx.cat.subset(62003, 62382, 728, 900002, 90001)
+	local chars = { [A] = char(cat, { classFile = "ROGUE", level = 1, done = { 91001, 91002, 91003, 91004, 91005 } }) }
+	local on = { settings = { activities = { solo = true, dungeon = true }, allowCharacterSwitch = false } }
+	local r = Planner.plan(input(cat, chars, on))
+	local novice, explorer, dungeon = has(r.cards, 62003), has(r.cards, 62382), has(r.cards, 90001)
+	check(novice and explorer and dungeon, "all three candidates offered")
+	eq(novice.missing.total, 25); eq(novice.missing.n, 24)
+	eq(explorer.missing.total, 3); eq(explorer.missing.n, 3)
+	eq(dungeon.missing.total, 6); eq(dungeon.missing.n, 1)
+	-- 24/25 = 0.96 < 3/3 = 1.0: Novice before Explorer (both solo); dungeon 1/6 has the smallest share but prep ranks solo first
+	eq(table.concat(ids(r.cards), ","), "62003,90001,62382", "card 1 = Novice (0.96 < 1.0); selection rule 6 then prefers the other activity for card 2")
+	local again = Planner.plan(input(cat, chars, on))
+	eq(table.concat(ids(again.cards), ","), table.concat(ids(r.cards), ","), "order must stay stable")
+	-- fraction beats absolute size: 1 of 25 levels left beats 1 of 3 areas
+	local c2 = char(cat, { classFile = "ROGUE", level = 24 })
+	eq(Planner.plan(input(cat, { [A] = c2 })).cards[1].achievementID, 62003)
+end
+
+-- D20: proximity only breaks an exact ratio tie; it never beats a smaller relative remainder.
+do
+	local cat = fx.cat.subset(62003, 62382, 728, 900002)
+	local chars = { [A] = char(cat, { classFile = "ROGUE", level = 1 }) }
+	local r = Planner.plan(input(cat, chars, { location = { mapID = 1411 } }))
+	eq(has(r.cards, 62382).missing.n, 3); eq(has(r.cards, 62382).missing.total, 3)
+	eq(r.cards[1].achievementID, 62003, "near explorer (3/3) must lose to far level milestone (24/25)")
+	-- exact tie 1/1 vs 1/1: proximity decides, then absolute n
+	local function crit(id, t, assetID) return { id = id, type = t, req = 1, assetID = assetID } end
+	local function ach(id, criteria, pts) return { id = id, name = "A" .. id, points = pts or 0, categoryID = 10, activity = "solo", criteria = criteria } end
+	local tie = { build = "70205", readAt = 1000, categories = {}, achievements = {
+		[1001] = ach(1001, { crit(1, 8, 728) }, 1), [1002] = ach(1002, { crit(2, 8, 768) }, 1),
+		[728] = ach(728, { crit(20, 43), crit(21, 43) }), [768] = ach(768, { crit(10, 43), crit(11, 43), crit(12, 43) }),
+	} }
+	local function first(loc) return Planner.plan(input(tie, { [A] = char(tie) }, { location = loc and { mapID = loc } })).cards[1].achievementID end
+	eq(first(nil), 1001, "no location: smaller absolute n"); eq(first(1411), 1001)
+	eq(first(1420), 1002, "ratio tie: the near one wins over smaller n")
+	-- nested helper: the local entry carries the zone helper id and its own open count, not the chain's
+	local loc = Planner.plan(input(tie, { [A] = char(tie, { done = { 10 } }) }, { location = { mapID = 1420 } }))["local"]
+	eq(loc[1].achievementID, 768); eq(loc[1].missing.n, 2); eq(loc[1].missing.total, 3); eq(loc[1].charKey, A)
 end
 
 -- Cards 2-3: current character first, twink-only results fill the rest (only with switching allowed).
@@ -347,6 +389,110 @@ do
 	end
 	node.goal.ranks = nil
 	eq(Planner.plan(node).goal.need, 22, "default ranks = maxRanks")
+end
+
+-- O1: goal types. renown = lifetime earned (account.renown), cap 65, never a spend card.
+do
+	local cat = fx.cat.subset(61994, 90001)
+	local function rn(level, renown, available)
+		local inp = input(cat, { [A] = char(cat, { points = { available = available or 0, spent = 0 } }) }, { goal = { type = "renown", level = level } })
+		inp.account.renown = renown
+		return Planner.plan(inp)
+	end
+	local r = rn(40, 25, 16)
+	eq(r.status, "ok", "enough spendable points must not make a renown goal reachable")
+	eq(r.goal.type, "renown"); eq(r.goal.need, 15); eq(r.goal.remaining, 15); eq(r.goal.reachable, nil)
+	for _, c in ipairs(r.cards) do check(c.action ~= "spend", "renown goal offered a spend card") end
+	r = rn(65, 0); eq(r.status, "ok"); eq(r.goal.need, 65)
+	r = rn(66, 0); eq(r.status, "invalid"); eq(r.reason, "needAbove"); eq(r.reasonArg, 65)
+	eq(rn(0, 0).reason, "needInvalid"); eq(rn(1.5, 0).reason, "needInvalid")
+	r = rn(20, 20); eq(r.status, "reachable"); eq(r.cards[1].action, "chooseGoal")
+	r = rn(10, nil); eq(r.status, "loading"); eq(r.reason, "renown")
+	-- points goal keeps its 16 cap and spend card
+	local inp = input(cat, { [A] = char(cat, { points = { available = 16, spent = 0 } }) }, { goal = { type = "points", need = 16 } })
+	eq(Planner.plan(inp).cards[1].action, "spend")
+	inp.goal.need = 17; eq(Planner.plan(inp).reason, "needAbove")
+end
+
+-- O5: Explorer counts open AREAS of open helpers; helpers with unknown criteria drop the achievement.
+do
+	local cat = fx.cat.subset(62382, 728, 900002)
+	local card = Planner.plan(input(cat, { [A] = char(cat) })).cards[1]
+	eq(card.missing.n, 3, "728 has 2 open areas, 900002 has 1"); eq(card.missing.ctype, "area")
+	eq(card.missing.items[1], 728); eq(card.missing.items[2], 900002, "items keep the helper IDs")
+	local part = Planner.plan(input(cat, { [A] = char(cat, { done = { 831 } }) })).cards[1]
+	eq(part.missing.n, 2, "one area of 728 done")
+	local c = char(cat); c.criteria[831] = nil -- one area unknown
+	eq(#Planner.plan(input(cat, { [A] = c })).cards, 0, "unknown helper criterion must drop the achievement, not count 0")
+	local broken = fx.cat.subset(62382, 728, 900002)
+	broken.achievements[900002] = nil
+	eq(#Planner.plan(input(broken, { [A] = char(broken) })).cards, 0, "missing helper must drop the achievement")
+end
+
+-- missing.ctype from the criteria type of the open criteria.
+do
+	local cat = fx.cat.subset(90001, 62012)
+	local card = Planner.plan(input(cat, { [A] = char(cat) })).cards[1]
+	eq(card.achievementID, 90001); eq(card.missing.ctype, "boss")
+	check(has(Planner.plan(input(cat, { [A] = char(cat, { skills = { [2937] = { rank = 1, max = 75 } } }) })).cards, 62012))
+end
+
+-- Recursive type-8 chains: Explorer -> Azeroth -> 2 continents -> zones -> areas; ctype 78; nested local zone.
+do
+	local function crit(id, t, assetID) return { id = id, type = t, req = 1, assetID = assetID } end
+	local function ach(id, activity, criteria, pts) return { id = id, name = "A" .. id, points = pts or 0, categoryID = 10, activity = activity, criteria = criteria } end
+	local cat = { build = "70205", readAt = 1000, categories = {}, achievements = {
+		[62382] = ach(62382, "solo", { crit(1, 8, 62053) }, 1),
+		[62053] = ach(62053, "solo", { crit(2, 8, 62353), crit(3, 8, 62355) }),
+		[62353] = ach(62353, "solo", { crit(4, 8, 768), crit(5, 8, 728) }),
+		[62355] = ach(62355, "solo", { crit(6, 8, 900002) }),
+		[768] = ach(768, "solo", { crit(10, 43), crit(11, 43), crit(12, 43) }),
+		[728] = ach(728, "solo", { crit(20, 43), crit(21, 43) }),
+		[900002] = ach(900002, "solo", { crit(30, 43), crit(31, 43) }),
+		[90010] = ach(90010, "dungeon", { crit(40, 78), crit(41, 0), crit(42, 0), crit(43, 0), crit(44, 0), crit(45, 0) }, 1),
+	} }
+	local function explorer(c, o)
+		local inp = input(cat, { [A] = c }, o)
+		return inp, Planner.plan(inp)
+	end
+	local c = char(cat, { done = { 10, 11 } })
+	local inp, r = explorer(c)
+	local card = has(r.cards, 62382); check(card, "explorer offered")
+	eq(card.missing.n, 1 + 2 + 2, "open leaves at any depth (768: 1, 728: 2, 900002: 2)")
+	eq(card.missing.total, 7); eq(card.missing.ctype, "area")
+	eq(table.concat(card.missing.items, ","), "768,728,900002", "lowest-level zone helpers")
+	-- one zone account-complete: all its leaves done, total still counts them
+	inp.account.completed[728] = true
+	card = has(Planner.plan(inp).cards, 62382)
+	eq(card.missing.n, 3); eq(card.missing.total, 7); eq(table.concat(card.missing.items, ","), "768,900002")
+	-- chain level done on the character marks the whole subtree done
+	local c2 = char(cat, { done = { 3 } })
+	card = has(select(2, explorer(c2)).cards, 62382)
+	eq(card.missing.n, 5); eq(card.missing.total, 7)
+	-- account-complete zone with unknown criteria: drop, never invent
+	local broken = char(cat); inp = input(cat, { [A] = broken }); inp.account.completed[728] = true
+	cat.achievements[728] = nil
+	eq(has(Planner.plan(inp).cards, 62382), nil, "unknown leaf count must drop the candidate")
+	cat.achievements[728] = ach(728, "solo", { crit(20, 43), crit(21, 43) })
+	-- cycle: drop instead of looping
+	cat.achievements[768].criteria = { crit(10, 8, 62382) }
+	eq(has(select(2, explorer(char(cat))).cards, 62382), nil, "cycle must drop")
+	cat.achievements[768].criteria = { crit(10, 43), crit(11, 43), crit(12, 43) }
+	-- local opportunity finds the nested zone helper
+	local loc = Planner.plan(input(cat, { [A] = char(cat) }, { location = { mapID = 1420 } }))["local"]
+	eq(loc[1] and loc[1].achievementID, 768, "nested zone helper is the local opportunity")
+	-- Spelunker-like: one type 78 + five type 0 = boss
+	local sp = has(Planner.plan(input(cat, { [A] = char(cat) }, { settings = { activities = { solo = true, dungeon = true }, allowCharacterSwitch = true } })).cards, 90010)
+	check(sp, "spelunker offered"); eq(sp.missing.ctype, "boss"); eq(sp.missing.n, 6)
+end
+
+-- Local opportunities exclude the pinned challenge.
+do
+	local cat = fx.cat.subset(62382, 728, 900002)
+	local inp = input(cat, { [A] = char(cat) }, { location = { mapID = 1411 } })
+	eq(Planner.plan(inp)["local"][1].achievementID, 728)
+	inp.pinned = { achievementID = 728, charKey = A, pinnedAt = 1 }
+	eq(#Planner.plan(inp)["local"], 0, "pinned challenge listed as local opportunity")
 end
 
 print("planner_spec: all checks passed")

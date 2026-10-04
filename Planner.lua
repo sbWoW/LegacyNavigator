@@ -7,7 +7,6 @@ ns.Planner = Planner
 
 local PREP = { solo = 1, dungeon = 2, raid = 3 } -- also the list of plannable activities
 local function prep(activity) return PREP[activity] or 4 end -- pvp (explicitly enabled) last
-local KIND = { criteria = 1, skill = 2, level = 3 }
 local MAX_CARDS, MAX_LOCAL = 3, 2
 
 local function sortedKeys(t)
@@ -38,7 +37,7 @@ end
 
 local function zoneMap(input, helperID) return input.definitions.zoneMaps[helperID] end
 
--- Remaining need of one achievement for one character: kind, n, items, contribution, mapID. nil = not
+-- Remaining need of one achievement for one character: kind, n, items, ctype (boss|area|other), mapID. nil = not
 -- suitable or unknown.
 local function need(ach, char, input)
 	local def, account = input.definitions, input.account
@@ -54,7 +53,7 @@ local function need(ach, char, input)
 				return nil
 			end
 		end
-		return { kind = "level", n = n }
+		return { kind = "level", n = n, total = milestone.level }
 	end
 	local list = ach.criteria
 	if type(list) ~= "table" or #list == 0 then return nil end
@@ -66,23 +65,59 @@ local function need(ach, char, input)
 		local have = math.max(rec and type(rec.q) == "number" and rec.q or 0, skill.rank)
 		local n = list[1].req - have
 		if n <= 0 then return nil end
-		return { kind = "skill", n = n }
+		return { kind = "skill", n = n, total = list[1].req }
 	end
-	local items, mapID = {}, nil
+	local items, mapID, total, ctype, whole = {}, nil, 0, nil, 0 -- whole = all criteria/areas of the challenge
 	local here = input.location and input.location.mapID
-	for _, c in ipairs(list) do
-		local open = criterionOpen(c, char, account)
-		if open == nil then return nil end
-		if open then
-			items[#items + 1] = c.type == 8 and c.assetID or c.id
+	local function kindOf(t) return (t == 0 or t == 78) and "boss" or t == 43 and "area" or "other" end
+	local function note(t)
+		local k = t == "area" and t or kindOf(t)
+		ctype = (ctype == nil or ctype == k) and k or "other"
+	end
+	-- Type-8 chains are resolved down to leaf criteria (depth <= 6, cycle guard). Returns false when anything is
+	-- unknown (never invented as 0). forced = the subtree is already done (account-complete or done at chain level).
+	local MAX_DEPTH = 6
+	local function walk(crits, forced, depth, path, helperID)
+		local direct = 0
+		for _, c in ipairs(crits) do
+			local open = false
+			if not forced then
+				open = criterionOpen(c, char, account)
+				if open == nil then return false end
+			end
 			if c.type == 8 then
-				local m = zoneMap(input, c.assetID)
-				if m and (mapID == nil or (m == here and mapID ~= here)) then mapID = m end
+				local h = input.catalogue.achievements[c.assetID]
+				if depth >= MAX_DEPTH or path[c.assetID] or type(h) ~= "table" or type(h.criteria) ~= "table" or #h.criteria == 0 then
+					return false -- total unknown: drop
+				end
+				path[c.assetID] = true
+				local ok = walk(h.criteria, forced or not open, depth + 1, path, c.assetID)
+				path[c.assetID] = nil
+				if not ok then return false end
+			else
+				whole = whole + 1
+				if open then
+					total = total + 1
+					if helperID then
+						direct = direct + 1
+						note("area")
+					else
+						items[#items + 1] = c.id
+						note(c.type)
+					end
+				end
 			end
 		end
+		if direct > 0 then
+			items[#items + 1] = helperID -- lowest-level open helper IDs stay the items (zones)
+			local m = zoneMap(input, helperID)
+			if m and (mapID == nil or (m == here and mapID ~= here)) then mapID = m end
+		end
+		return true
 	end
-	if #items == 0 then return nil end
-	return { kind = "criteria", n = #items, items = items, mapID = mapID }
+	if not walk(list, false, 0, {}, nil) then return nil end
+	if total == 0 or whole < total then return nil end -- total unknown: drop, never invent
+	return { kind = "criteria", n = total, total = whole, items = items, mapID = mapID, ctype = ctype }
 end
 
 -- Minimum need of an advantage node: ranks x 1 + gate shortfall inside its tree. Edge rule unchecked.
@@ -124,7 +159,7 @@ end
 local function makeWay(ach, key, n, input, cur)
 	local char = input.characters[key]
 	return {
-		ach = ach, charKey = key, kind = n.kind, n = n.n, items = n.items, mapID = n.mapID,
+		ach = ach, charKey = key, kind = n.kind, n = n.n, total = n.total, items = n.items, mapID = n.mapID, ctype = n.ctype,
 		-- finishing the card's own achievement earns its points; "progress" only for a 0-point helper step
 		contribution = type(ach.points) == "number" and ach.points > 0 and "point" or "progress",
 		dataState = dataStateOf(key, input, cur), capturedAt = char.capturedAt,
@@ -140,17 +175,21 @@ local function cmpWays(a, b)
 	return a.charKey < b.charKey
 end
 
+-- Total order of architecture.md 8.2 rule 5 (D19, D20): hasCur, dataState, prep, relative remainder, proximity, n, achievementID.
 local function cmpResults(a, b, here)
 	local x, y = a.best, b.best
 	if a.hasCur ~= b.hasCur then return a.hasCur end
 	if x.dataState ~= y.dataState then return x.dataState == "confirmed" end
 	local pa, pb = prep(a.ach.activity), prep(b.ach.activity)
 	if pa ~= pb then return pa < pb end
+	-- D19: smallest relative remainder open/total first, compared as exact fractions (x.n/x.total < y.n/y.total
+	-- <=> x.n*y.total < y.n*x.total, integers only, no float ties). A cross-multiplied fraction order is a total
+	-- preorder (totals > 0), so it stays transitive for table.sort.
+	local lx, ly = x.n * y.total, y.n * x.total
+	if lx ~= ly then return lx < ly end
+	-- D20: proximity only breaks an exact ratio tie; then absolute n, then id.
 	local la, lb = bool(x.mapID ~= nil and x.mapID == here), bool(y.mapID ~= nil and y.mapID == here)
 	if la ~= lb then return la < lb end
-	-- ponytail: proximity, then kinds in a fixed order instead of "equal when kinds differ" (an intransitive
-	-- comparator breaks table.sort); n is only compared within one kind this way.
-	if x.kind ~= y.kind then return KIND[x.kind] < KIND[y.kind] end
 	if x.n ~= y.n then return x.n < y.n end
 	return a.ach.id < b.ach.id
 end
@@ -158,7 +197,7 @@ end
 local function card(way, extra)
 	local c = {
 		achievementID = way.ach.id, charKey = way.charKey, action = "pin", contribution = way.contribution,
-		missing = { kind = way.kind, n = way.n, items = way.items }, dataState = way.dataState, capturedAt = way.capturedAt,
+		missing = { kind = way.kind, n = way.n, total = way.total, items = way.items, ctype = way.ctype }, dataState = way.dataState, capturedAt = way.capturedAt,
 		location = way.mapID and { mapID = way.mapID } or nil,
 	}
 	for key, value in pairs(extra or {}) do c[key] = value end
@@ -226,6 +265,19 @@ function Planner.plan(input)
 			if g.reachable then
 				result.cards = { { charKey = cur, action = "spend", contribution = "point", why = { "goal", "reachable" },
 					dataState = dataStateOf(cur, input, cur), capturedAt = char.capturedAt, available = available } }
+				return finish("reachable")
+			end
+		elseif goal.type == "renown" then
+			-- O1: lifetime earned points (account.renown), cosmetic levels; never a spend card.
+			local level, cap = goal.level, def.maxRenown or 65
+			if type(level) ~= "number" or level % 1 ~= 0 or level < 1 then return finish("invalid", "needInvalid") end
+			if level > cap then result.reasonArg = cap; return finish("invalid", "needAbove") end
+			if type(account.renown) ~= "number" then return finish("loading", "renown") end
+			local n = level - account.renown
+			g.level, g.need, g.remaining = level, n, math.max(0, n)
+			if n <= 0 then
+				result.cards = { { charKey = cur, action = "chooseGoal", contribution = "point", why = { "goal", "reachable" },
+					dataState = dataStateOf(cur, input, cur), capturedAt = char.capturedAt } }
 				return finish("reachable")
 			end
 		elseif goal.type == "challenge" then
@@ -301,12 +353,16 @@ function Planner.plan(input)
 	end
 
 	-- Rule 7: local opportunities for the current character, apart from the cards.
+	local pinnedID = input.pinned and input.pinned.achievementID
 	if here then
 		for _, id in ipairs(sortedKeys(catalogue.achievements)) do
 			local ach = catalogue.achievements[id]
-			if #result["local"] < MAX_LOCAL and ach.points == 0 and allowed(ach.activity, acts) and not accountDone(account, id)
-				and zoneMap(input, id) == here and need(ach, char, input) then
-				result["local"][#result["local"] + 1] = { achievementID = id, charKey = cur, location = { mapID = here } }
+			if #result["local"] < MAX_LOCAL and id ~= pinnedID and ach.points == 0 and allowed(ach.activity, acts) and not accountDone(account, id)
+				and zoneMap(input, id) == here then
+				local missing = need(ach, char, input)
+				if missing then
+					result["local"][#result["local"] + 1] = { achievementID = id, charKey = cur, location = { mapID = here }, missing = missing }
+				end
 			end
 		end
 	end

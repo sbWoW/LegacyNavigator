@@ -1,8 +1,9 @@
 ## Interface: 16001
 ## Title: Legacy Navigator
-## Notes: Legacy goal planner for WoW Forever. Etappe 2: core, provider, model, planner (read-only).
+## Notes: Legacy goal planner for WoW Forever. Etappe 3: overlay on top of the read-only core.
 ## Author: sb
 ## Version: 0.1.0
+## OptionalDeps: EllesmereUI
 ## SavedVariables: LegacyNavigatorDiagDB, LegacyNavigatorDB
 ## IconTexture: Interface\Icons\INV_Misc_Map_01
 embeds.xml
@@ -12,4 +13,6 @@ Definitions.lua
 Model.lua
 Planner.lua
 Provider.lua
+Style.lua
+UI.lua
 Core.lua

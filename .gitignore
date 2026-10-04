@@ -9,3 +9,6 @@ Thumbs.db
 .cache/
 .release/
 *.zip
+
+# third-party libs: .pkgmeta externals / tools/fetch-libs.sh
+Libs/

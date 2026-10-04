@@ -112,12 +112,16 @@ function Model.snapshot(raw, now)
 	local character = {
 		state = "confirmed", capturedAt = now, build = raw.build,
 		guid = raw.guid, classFile = raw.classFile, level = raw.level, points = raw.points, criteria = {},
+		earnedByMe = {}, -- O2: evidence per completed achievement; isAccountComplete stays the only rule
 	}
 	if type(now) ~= "number" then flag(incomplete, "character", "time") end
 	if not raw.key then flag(incomplete, "character", "key") end
 	if not raw.guid or not raw.classFile or type(raw.level) ~= "number" then flag(incomplete, "character", "identity") end
 	-- skills stay nil (unknown) and do not block the snapshot
-	if type(raw.skills) == "table" then character.skills = raw.skills else flag(incomplete, "skills", "unreadable") end
+	if type(raw.skills) == "table" then
+		character.skills = { capturedAt = now, state = "confirmed" } -- O4: own stamp; string keys never clash with skillLineIDs
+		for id, skill in pairs(raw.skills) do character.skills[id] = skill end
+	else flag(incomplete, "skills", "unreadable") end
 	if not raw.achievementsComplete then
 		flag(incomplete, "account", "achievements")
 		flag(incomplete, "character", "criteria")
@@ -131,7 +135,12 @@ function Model.snapshot(raw, now)
 	for _, ach in ipairs(raw.achievements) do
 		local complete = Model.isAccountComplete(ach)
 		if complete == nil then flag(incomplete, "account", "completed:" .. tostring(ach.id))
-		elseif complete then account.completed[ach.id] = true end
+		elseif complete then
+			account.completed[ach.id] = true
+			if ach.wasEarnedByMe ~= nil or ach.earnedBy ~= nil then
+				character.earnedByMe[ach.id] = { me = ach.wasEarnedByMe, by = ach.earnedBy }
+			end
+		end
 		if ach.incomplete then flag(incomplete, "character", "achievement:" .. tostring(ach.id)) end
 		for _, criterion in ipairs(ach.criteria or {}) do
 			if criterion.id == nil or type(criterion.done) ~= "boolean" or criterion.quantity == nil then
@@ -157,7 +166,10 @@ function Model.persist(store, snap)
 	store.account = snap.account
 	store.characters = store.characters or {}
 	local old = store.characters[snap.key]
-	if snap.character.skills == nil and old then snap.character.skills = old.skills end -- unreadable now, keep the last known
+	if snap.character.skills == nil and old and old.skills then -- unreadable now: keep the last known, with its OLD stamp
+		snap.character.skills = old.skills
+		snap.character.skills.state = "stale"
+	end
 	store.characters[snap.key] = snap.character
 	return true
 end
@@ -185,4 +197,23 @@ function Model.listCharacters(store, currentKey, currentConfirmed, build)
 	end
 	table.sort(list, function(a, b) return a.key < b.key end)
 	return list
+end
+
+-- Pin = one challenge. Same achievement again unpins, another one replaces. Returns the new pin (nil = none).
+function Model.togglePin(profile, card, now)
+	local pinned = profile.pinned
+	if pinned and pinned.achievementID == card.achievementID then
+		profile.pinned = nil
+	else
+		profile.pinned = { achievementID = card.achievementID, charKey = card.charKey, pinnedAt = now }
+	end
+	return profile.pinned
+end
+
+-- True only when the pinned achievement became newly completed and is worth points.
+function Model.pinCompleted(beforeCompleted, afterCompleted, pinned, catalogue)
+	local id = pinned and pinned.achievementID
+	if not id or (beforeCompleted and beforeCompleted[id]) or not (afterCompleted and afterCompleted[id]) then return false end
+	local ach = catalogue and catalogue.achievements and catalogue.achievements[id]
+	return ach ~= nil and type(ach.points) == "number" and ach.points > 0
 end

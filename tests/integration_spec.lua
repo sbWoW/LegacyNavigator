@@ -1,0 +1,149 @@
+-- Run from the addon folder: lua tests/integration_spec.lua
+-- O7/D16: client-shaped Provider stubs -> Core scan -> Model snapshot/persist -> Planner via Core:Replan.
+local function check(value, message)
+	if not value then error(message or "assertion failed", 2) end
+end
+local function eq(actual, expected, message)
+	if actual ~= expected then
+		error((message or "mismatch") .. ": expected " .. tostring(expected) .. ", got " .. tostring(actual), 2)
+	end
+end
+
+-- Anonymized catalogue in raw client shapes. Row: GetAchievementInfo order (id, name, points, completed, ..., wasEarnedByMe).
+local categories = { [15586] = { 62003, 62382, 62053, 768 }, [15593] = { 15594 }, [15620] = { 62046 }, [15626] = { 90002 } }
+local function row(id, name, points) return { id, name, points, false, nil, nil, nil, nil, 0, 0, "", false, false } end
+local info = {
+	[62003] = row(62003, "Novice Rogue", 1), [62382] = row(62382, "Explorer", 1), [62053] = row(62053, "Explore Azeroth", 0), [768] = row(768, "Explore Tirisfal Glades", 0),
+	[15594] = row(15594, "Novice Spelunker", 1), [62046] = row(62046, "Reputation Rival", 1), [90002] = row(90002, "Raid Walker", 1),
+}
+local function crit(text, ctype, quantity, req, assetID, id) return { text, ctype, false, quantity, req, nil, 0, assetID, "", id } end
+local criteria = {
+	[62003] = {}, -- level challenge: no criteria, the class milestone comes from Definitions
+	[62382] = { crit("Explore Azeroth", 8, 0, 1, 62053, 112690) },
+	[62053] = { crit("Tirisfal Glades", 8, 0, 1, 768, 112691) },
+	[768] = { crit("Brill", 43, 0, 1, nil, 841), crit("Deathknell", 43, 0, 1, nil, 842), crit("Garrison", 43, 0, 1, nil, 843) },
+	[15594] = { crit("Boss A", 0, 0, 1, nil, 93101), crit("Boss B", 0, 0, 1, nil, 93102) },
+	[62046] = { crit("Faction", 243, 0, 1, nil, 92001) },
+	[90002] = { crit("Raid Boss", 0, 0, 1, nil, 92101) },
+}
+
+local timers, events = {}, {}
+local saved = {}
+local db = { profile = { characters = {} }, global = {}, current = "Default", profiles = {} }
+function db:GetCurrentProfile() return self.current end
+function db:SetProfile(name) self.current = name end
+function db:DeleteProfile(name) self.profiles[name] = nil end
+
+local core
+local function lib(name)
+	if name == "AceAddon-3.0" then
+		return { NewAddon = function(_, addonName)
+			local o = { name = addonName }
+			function o:RegisterEvent(event, handler) events[event] = handler or event end
+			function o:RegisterChatCommand() end
+			function o:Print(message) saved[#saved + 1] = message end
+			function o:ScheduleTimer(fn)
+				local callback = type(fn) == "string" and function() o[fn](o) end or fn
+				timers[#timers + 1] = callback
+				return callback
+			end
+			function o:ScheduleRepeatingTimer(fn) return function() o[fn](o) end end
+			function o:CancelTimer() end
+			core = o
+			return o
+		end }
+	elseif name == "AceDB-3.0" then
+		return { New = function() return db end }
+	end
+end
+LibStub = lib
+GetLocale = function() return "enUS" end
+GetBuildInfo = function() return "1.60.1", "70205", "Oct 03 2026", 16001 end
+GetTime = function() return 0 end
+GetServerTime = function() return 5000 end
+date = function() return "DATE" end
+InCombatLockdown = function() return false end
+UnitName = function() return "Alpha" end
+GetRealmName = function() return "Realm" end
+UnitClass = function() return "Rogue", "ROGUE", 4 end
+UnitGUID = function() return "Player-Alpha" end
+UnitLevel = function() return 1 end
+GetCategoryList = function() return { 15586, 15593, 15620, 15626 } end
+GetCategoryInfo = function(id) return "Category " .. id, -1, 0 end
+GetCategoryNumAchievements = function(id) return #categories[id], 0, 0 end
+GetAchievementInfo = function(a, b)
+	local id = categories[a] and categories[a][b]
+	if id then return table.unpack(info[id], 1, 13) end
+end
+GetAchievementNumCriteria = function(id) return #criteria[id] end
+GetAchievementCriteriaInfo = function(id, i) return table.unpack(criteria[id][i], 1, 10) end
+C_Traits = {
+	GetTraitCurrencyForAchievement = function(_, id) return info[id][3] end,
+	GetConfigIDByTreeID = function(tree) return 900 + tree end,
+	GetTreeCurrencyInfo = function() return {} end,
+	GetTreeNodes = function() return { 1 } end,
+	GetTreeInfo = function() return { rootNodeID = 1, cannotRefund = true } end,
+	GetNodeInfo = function() return { ID = 1, currentRank = 0, maxRanks = 1, conditionIDs = {} } end,
+	GetNodeCost = function() return { { ID = 4225, amount = 1 } } end,
+}
+C_MajorFactions = { GetCurrentRenownLevel = function() return 0 end }
+C_SkillInfo = { GetNumSkillLines = function() return 0 end }
+C_Map = { GetBestMapForUnit = function() return 1411 end }
+
+local ns = {}
+for _, file in ipairs({ "Locale.lua", "Definitions.lua", "Model.lua", "Planner.lua", "Provider.lua", "Core.lua" }) do
+	assert(loadfile(file))("LegacyNavigator", ns)
+end
+core:OnInitialize()
+core:OnEnable()
+core[events.PLAYER_ENTERING_WORLD](core)
+for _ = 1, 5000 do
+	if #timers == 0 then break end
+	table.remove(timers, 1)()
+end
+
+-- Snapshot persisted through the Core scan path.
+local alpha = db.profile.characters["Realm-Alpha"]
+check(alpha and alpha.state == "confirmed" and alpha.classFile == "ROGUE" and alpha.level == 1, "snapshot not persisted")
+eq(alpha.criteria[841].done, false, "area criterion not stored")
+eq(core.states.account, "confirmed")
+
+-- Plan via Core:Replan.
+local result = core.lastResult
+eq(result.status, "ok", "plan status")
+-- D19: the smallest relative remainder leads within an activity: Novice Rogue 24/25 = 0.96 precedes the Explorer
+-- card 3/3 = 1.0; the level-1 rogue gets its own class challenge, no other class's.
+local novice
+for _, c in ipairs(result.cards) do
+	if c.achievementID == 62003 then novice = c end
+end
+check(novice and novice.missing.kind == "level" and novice.missing.n == 24, "Novice Rogue card missing")
+local explorer
+for _, list in ipairs({ result.cards, result.alternatives }) do
+	for _, c in ipairs(list) do if c.achievementID == 62382 then explorer = c end end
+end
+check(explorer, "explorer card missing")
+eq(explorer.missing.n, 3, "explorer counts open leaf areas through a 2-level chain")
+eq(explorer.missing.total, 3, "explorer total = all areas")
+local pos = {}
+for i, c in ipairs(result.cards) do pos[c.achievementID] = i end
+check(pos[62003] and (not pos[62382] or pos[62003] < pos[62382]), "Novice Rogue (0.96) must precede Explorer (1.0)")
+for _, c in ipairs(result.cards) do
+	check(c.achievementID ~= 62046 and c.achievementID ~= 90002, "pvp/raid card offered by default")
+end
+
+-- Pin toggling changes result.pinned; a planner error keeps lastResult.
+local first = result.cards[1]
+core:TogglePin(first)
+eq(core.lastResult.pinned.achievementID, first.achievementID, "pin not in result")
+core:TogglePin(first)
+eq(core.lastResult.pinned, nil, "unpin not in result")
+core:TogglePin({ achievementID = 62003, charKey = "Realm-Alpha", action = "spend" })
+eq(db.profile.pinned, nil, "non-pin card was pinned")
+local good = core.lastResult
+core.forcePlanError = true
+core:Replan()
+eq(core.lastResult, good, "planner error dropped lastResult")
+check(core.planError, "planError not set")
+
+print("integration_spec: all assertions passed")

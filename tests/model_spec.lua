@@ -102,6 +102,46 @@ do
 	check(Model.persist(store, Model.snapshot(raw, 4000)) and raw.skills == false, "skills-less snapshot refused or raw mutated")
 	eq(store.characters["Realm-Alpha"].capturedAt, 4000)
 	eq(store.characters["Realm-Alpha"].skills[2937].rank, 20, "stored skills were erased")
+	-- O4: carried-over skills keep their OLD stamp and are stale; fresh ones are confirmed with the new stamp
+	eq(store.characters["Realm-Alpha"].skills.capturedAt, 1000, "carried-over skills got a fresh date")
+	eq(store.characters["Realm-Alpha"].skills.state, "stale")
+	check(Model.persist(store, Model.snapshot(rawScan(), 5000)), "fresh scan refused")
+	eq(store.characters["Realm-Alpha"].skills.capturedAt, 5000); eq(store.characters["Realm-Alpha"].skills.state, "confirmed")
+end
+
+-- O2: per-character earned evidence for completed achievements; account rule unchanged.
+do
+	local mine = rawAch(102, true, {}, 0); mine.wasEarnedByMe = true
+	local other = rawAch(103, true, {}, 1); other.wasEarnedByMe = false; other.earnedBy = "Someone"
+	local open = rawAch(104, false, {}, 1); open.wasEarnedByMe = false
+	local unknown = rawAch(105, true, {}, 1)
+	local snap = Model.snapshot(rawScan({ achievements = { mine, other, open, unknown } }), 1000)
+	eq(snap.character.earnedByMe[102].me, true)
+	eq(snap.character.earnedByMe[103].me, false); eq(snap.character.earnedByMe[103].by, "Someone")
+	eq(snap.character.earnedByMe[104], nil, "open achievement has no evidence")
+	eq(snap.character.earnedByMe[105], nil, "unread evidence stays nil")
+	eq(snap.account.completed[103], true, "completed by another character still counts account-wide")
+end
+
+-- Pin helpers.
+do
+	local profile = {}
+	local p = Model.togglePin(profile, { achievementID = 7, charKey = "Realm-Alpha" }, 111)
+	eq(profile.pinned, p); eq(p.achievementID, 7); eq(p.charKey, "Realm-Alpha"); eq(p.pinnedAt, 111)
+	p = Model.togglePin(profile, { achievementID = 8, charKey = "Realm-Beta" }, 222)
+	eq(p.achievementID, 8, "other achievement replaces"); eq(profile.pinned.pinnedAt, 222)
+	eq(Model.togglePin(profile, { achievementID = 8, charKey = "Realm-Alpha" }, 333), nil, "same achievement unpins")
+	eq(profile.pinned, nil)
+
+	local cat = { achievements = { [7] = { points = 1 }, [8] = { points = 0 } } }
+	local pin = { achievementID = 7 }
+	eq(Model.pinCompleted({}, { [7] = true }, pin, cat), true)
+	eq(Model.pinCompleted({ [7] = true }, { [7] = true }, pin, cat), false, "already complete before")
+	eq(Model.pinCompleted({}, {}, pin, cat), false, "not complete")
+	eq(Model.pinCompleted({}, { [7] = true }, nil, cat), false, "nothing pinned")
+	eq(Model.pinCompleted({}, { [8] = true }, { achievementID = 8 }, cat), false, "0 points")
+	eq(Model.pinCompleted({}, { [9] = true }, { achievementID = 9 }, cat), false, "not in catalogue")
+	eq(Model.pinCompleted(nil, { [7] = true }, pin, cat), true, "no before set")
 end
 
 -- State transitions: unknown -> loading/stale -> confirmed; incomplete keeps the old state.
@@ -243,7 +283,7 @@ local function fixture(options)
 	C_Map = { GetBestMapForUnit = function() return 1411 end, SetUserWaypoint = function() h.writeCalls = h.writeCalls + 1 end }
 
 	h.ns = {}
-	for _, file in ipairs({ "Locale.lua", "Definitions.lua", "Model.lua", "Provider.lua", "Core.lua" }) do
+	for _, file in ipairs({ "Locale.lua", "Definitions.lua", "Model.lua", "Planner.lua", "Provider.lua", "Core.lua" }) do
 		h.ns.Diag = { HandleSlash = function(input) table.insert(h.diagCalls, input) end }
 		assert(loadfile(file))("LegacyNavigator", h.ns)
 	end
@@ -448,6 +488,52 @@ do
 	check(goal("challenge 3") == nil, "disabled activity stored"); eq(goal("challenge 1").id, 1)
 	check(goal("node 11") == nil, "unknown node stored"); check(goal("node 10 3") == nil, "bad ranks stored")
 	check(goal("node 10 0") == nil); eq(goal("node 10 2").ranks, 2); eq(goal("node 10").nodeID, 10)
+end
+
+-- Etappe 3: events, Replan, pin, UI hand-off, scan-incomplete log.
+do
+	local h = fixture({ currencyNil = true })
+	for _, event in ipairs({ "PLAYER_LEVEL_UP", "SKILL_LINES_CHANGED", "TRAIT_TREE_CURRENCY_INFO_UPDATED", "ZONE_CHANGED_NEW_AREA" }) do
+		check(h.events[event], event .. " not registered")
+	end
+	local renders, inits = {}, 0
+	h.ns.UI = { Init = function() inits = inits + 1 end, Render = function(p) renders[#renders + 1] = p end, Show = function() renders.shown = true end }
+	h.core:OnEnable(); eq(inits, 1, "UI.Init not called from OnEnable")
+	h:fire("PLAYER_ENTERING_WORLD"); h:drain()
+	check(#renders >= 1, "FinishScan did not render")
+	-- 20-entry ring buffer with reasons
+	for _ = 1, 25 do h.core:LogIncomplete({ points = { "currency" } }, { readAt = 1, build = "1", key = "k" }) end
+	eq(#h.db.global.scanLog, 20, "log not capped"); check(h.db.global.scanLog[20].reason:find("points=currency", 1, true))
+	h.core:OnSlash("status")
+	check(h:text():find("Incomplete scans logged: 20", 1, true), "status misses the log")
+	-- planner error keeps the last good result
+	h.core.lastResult = { status = "ok", cards = {}, alternatives = {}, ["local"] = {}, goal = {} }
+	local good = h.core.lastResult
+	h.core.forcePlanError = true; h.core:Replan()
+	eq(h.core.lastResult, good, "planner error dropped lastResult"); check(h.core.planError, "planError not set")
+	eq(renders[#renders].planError, h.core.planError, "UI not told about the planner error")
+	h.core.forcePlanError = false; h.core:Replan(); eq(h.core.planError, nil)
+	-- pin/unpin through Core replans
+	local before = #renders
+	h.core:TogglePin({ achievementID = 61994, charKey = "Realm-Alpha", action = "pin" })
+	eq(h.db.profile.pinned.achievementID, 61994); check(#renders > before, "pin did not replan")
+	h.core:Unpin(); eq(h.db.profile.pinned, nil)
+	-- zone change: location + replan, no scan
+	before = #renders
+	h:fire("ZONE_CHANGED_NEW_AREA")
+	check(#renders > before and h.core.scan == nil, "zone change: no replan or started a scan")
+	check(not renders.shown, "intro opened while data is still loading")
+	-- bare /lnav toggles the overlay when a UI exists
+	local toggled = 0
+	h.ns.UI.Toggle = function() toggled = toggled + 1 end
+	h.core:OnSlash(""); eq(toggled, 1)
+	-- first start opens the overlay once, after the first successful plan
+	local g = fixture()
+	local shown = 0
+	g.ns.UI = { Show = function() shown = shown + 1 end, Render = function() end }
+	g:fire("PLAYER_ENTERING_WORLD"); g:drain()
+	eq(g.db.profile.seenIntro, true, "seenIntro not set"); eq(shown, 1, "intro overlay not shown once")
+	g.core:Replan(); eq(shown, 1, "intro overlay opened again")
 end
 
 print("model_spec: all assertions passed")

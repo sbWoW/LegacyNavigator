@@ -1,8 +1,20 @@
 package-as: LegacyNavigator
 
+externals:
+  Libs/LibStub: https://github.com/WoWUIDev/Ace3.git/LibStub
+  Libs/CallbackHandler-1.0: https://github.com/WoWUIDev/Ace3.git/CallbackHandler-1.0
+  Libs/AceAddon-3.0: https://github.com/WoWUIDev/Ace3.git/AceAddon-3.0
+  Libs/AceConsole-3.0: https://github.com/WoWUIDev/Ace3.git/AceConsole-3.0
+  Libs/AceDB-3.0: https://github.com/WoWUIDev/Ace3.git/AceDB-3.0
+  Libs/AceEvent-3.0: https://github.com/WoWUIDev/Ace3.git/AceEvent-3.0
+  Libs/AceTimer-3.0: https://github.com/WoWUIDev/Ace3.git/AceTimer-3.0
+  Libs/LibDataBroker-1.1: https://github.com/tekkub/libdatabroker-1-1.git
+  Libs/LibDBIcon-1.0: https://repos.wowace.com/wow/libdbicon-1-0/trunk/LibDBIcon-1.0
+
 ignore:
   - docs
   - tests
+  - tools
   - Legacy-Navigator-Konzept-v0.1.md
   - ONPREM-HANDOFF.md
   - STARTPROMPT.txt

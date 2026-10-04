@@ -1,15 +1,29 @@
 local addonName, ns = ...
-local L, def, Model, Provider, Planner = ns.L, ns.Definitions, ns.Model, ns.Provider, ns.Planner
+local L, def, Model, Provider, Planner, Text = ns.L, ns.Definitions, ns.Model, ns.Provider, ns.Planner, ns.Text
 
 local POLL_SECONDS, POLL_DEADLINE = 1, 30 -- poll every second, give up after 30 s of client time
 local CRITERIA_COALESCE = 1
 local TICK = 0.01 -- next frame; one scan step per tick keeps the frame time flat
+local SCAN_LOG_MAX = 20 -- E7: ring buffer of rejected ("incomplete") scans in the global DB, for the O3 investigation
+-- Rescan triggers beyond CRITERIA_UPDATE (O6). Registered under pcall: a name the client does not know must not break loading.
+local RESCAN_EVENTS = {
+	"PLAYER_LEVEL_UP", "SKILL_LINES_CHANGED", "TRAIT_TREE_CURRENCY_INFO_UPDATED",
+	"TRAIT_CONFIG_UPDATED", "MAJOR_FACTION_RENOWN_LEVEL_CHANGED",
+}
+local UI_DEFAULTS = {
+	overlay = { point = "TOP", x = 0, y = -160 }, -- top-anchored: the overlay grows downward
+	tracker = { point = "TOPRIGHT", x = -60, y = -240, locked = true },
+}
 
 local defaults = {
 	global = { schema = 1 },
 	profile = {
 		settings = { activities = def.defaultActivities, allowCharacterSwitch = true },
-		goal = nil, -- { type = "points", need = n } | { type = "challenge", id = n } | { type = "node", nodeID = n, ranks = n }
+		ui = UI_DEFAULTS, -- AceDB copies defaults on write, so saved positions never alias this table
+		minimap = { hide = false }, -- LibDBIcon saved state
+		seenIntro = false, -- the overlay opens by itself once, at the very first start
+		pinned = nil, -- { achievementID, charKey, pinnedAt } (Model.togglePin)
+		goal = nil, -- { type = "points", need = n } | { type = "renown", level = n } | { type = "challenge", id = n } | { type = "node", nodeID = n, ranks = n }
 		account = nil, -- Model.snapshot().account
 		characters = {}, -- ["Realm-Name"] = Model.snapshot().character
 	},
@@ -39,8 +53,14 @@ function Core:OnEnable()
 	self:RegisterEvent("PLAYER_ENTERING_WORLD")
 	self:RegisterEvent("RECEIVED_ACHIEVEMENT_LIST", "CheckReady")
 	self:RegisterEvent("TRAIT_CONFIG_LIST_UPDATED", "CheckReady")
-	self:RegisterEvent("CRITERIA_UPDATE")
+	self:RegisterEvent("CRITERIA_UPDATE", "RequestRescan")
 	self:RegisterEvent("PLAYER_REGEN_ENABLED")
+	self:RegisterEvent("ZONE_CHANGED_NEW_AREA")
+	for _, event in ipairs(RESCAN_EVENTS) do pcall(self.RegisterEvent, self, event, "RequestRescan") end
+	if ns.UI and ns.UI.Init then -- UI loads before Core and must not capture ns.Core at load time
+		local ok, err = pcall(ns.UI.Init, self)
+		if not ok then self:Print("UI init failed: " .. tostring(err)) end
+	end
 end
 
 -- Readiness ---------------------------------------------------------------------------------------
@@ -50,6 +70,7 @@ function Core:PLAYER_ENTERING_WORLD()
 	self.started = true
 	Model.beginSession(self.states, self.db.profile, Provider.readCharacter().key)
 	self:StartPoll()
+	self:Replan() -- stale stored data renders immediately
 end
 
 function Core:StartPoll()
@@ -147,6 +168,7 @@ function Core:FinishScan()
 		self.catalogue = catalogue
 		self.trees = raw.trees -- session memory only, consumed by the later planner
 	end
+	local completedBefore = self.db.profile.account and self.db.profile.account.completed
 	local saved = Model.persist(self.db.profile, snap)
 	Model.applyScan(self.states, snap.incomplete, saved)
 	self.currentKey = raw.key
@@ -159,6 +181,7 @@ function Core:FinishScan()
 		local summary = Model.summarizeIncomplete(snap.incomplete)
 		if summary ~= self.lastReported then self:Print(string.format(L["Scan incomplete, snapshot not saved: %s"], summary)) end
 		self.lastReported = summary
+		self:LogIncomplete(snap.incomplete, raw)
 	else
 		self.lastReported = nil
 	end
@@ -168,12 +191,38 @@ function Core:FinishScan()
 			self:Print(name .. ": " .. message)
 		end
 	end
+	-- Pinned challenge newly completed by this scan -> one-shot event for the UI (Etappe 4 tracker shows it).
+	local event
+	local profile = self.db.profile
+	if saved and Model.pinCompleted(completedBefore, profile.account and profile.account.completed, profile.pinned, self.catalogue) then
+		event = { kind = "completed", achievementID = profile.pinned.achievementID, charKey = profile.pinned.charKey }
+	end
+	self:Replan(event)
 	if self.rescan then self.rescan = false; self:StartScan() end
+end
+
+-- E7 (O3): why was a scan rejected? Newest last; global DB so every character feeds the same log.
+function Core:LogIncomplete(incomplete, raw)
+	local parts = {}
+	for _, domain in ipairs({ "account", "character", "points", "skills", "location" }) do
+		local list = incomplete[domain]
+		if list then
+			local shown = {}
+			for i = 1, math.min(#list, 6) do shown[i] = tostring(list[i]) end
+			parts[#parts + 1] = domain .. "=" .. table.concat(shown, ",") .. (#list > 6 and (",+" .. (#list - 6)) or "")
+		end
+	end
+	if raw.stepError then parts[#parts + 1] = "stepError=" .. string.sub(raw.stepError, 1, 120) end
+	local log = self.db.global.scanLog
+	if not log then log = {}; self.db.global.scanLog = log end
+	log[#log + 1] = { t = raw.readAt, build = raw.build, key = raw.key, reason = table.concat(parts, "; ") }
+	while #log > SCAN_LOG_MAX do table.remove(log, 1) end
 end
 
 -- Events ------------------------------------------------------------------------------------------
 
-function Core:CRITERIA_UPDATE()
+-- Shared by CRITERIA_UPDATE and the O6 events: bursts coalesce into one rescan.
+function Core:RequestRescan()
 	if self.scan then self.rescan = true; return end -- the running scan may have read stale criteria
 	if not self.currentKey or self.criteriaTimer then return end -- nothing scanned yet / burst already queued
 	-- ponytail: this rescan re-reads trees and catalogue too; reuse the previous trees if it measures slow.
@@ -181,6 +230,13 @@ function Core:CRITERIA_UPDATE()
 		self.criteriaTimer = nil
 		self:StartScan()
 	end, CRITERIA_COALESCE)
+end
+
+-- Zone change reads the location only; no scan (O6/D15).
+function Core:ZONE_CHANGED_NEW_AREA()
+	if not self.currentKey then return end
+	self.location = Provider.readLocation()
+	self:Replan()
 end
 
 function Core:PLAYER_REGEN_ENABLED()
@@ -191,6 +247,7 @@ function Core:PLAYER_REGEN_ENABLED()
 		self.pendingScan = false
 		self:StartScan()
 	end
+	self:RenderUI() -- clears the "updating after combat" line
 end
 
 -- Slash -------------------------------------------------------------------------------------------
@@ -200,7 +257,7 @@ local function stamp(time)
 	return date("%Y-%m-%d %H:%M", time)
 end
 
-function Core:PrintStatus()
+function Core:PrintStatus(all)
 	local profile = self.db.profile
 	self:Print(string.format(L["Legacy Navigator status (build %s)"], tostring(Provider.build())))
 	local parts = {}
@@ -226,24 +283,22 @@ function Core:PrintStatus()
 		self:Print(string.format(L["  %s: %s, %s, build %s%s"], entry.key, L[entry.state], stamp(entry.capturedAt),
 			tostring(entry.build), entry.buildMismatch and L[" (other build)"] or ""))
 	end
+	local log = self.db.global.scanLog or {}
+	if #log > 0 then
+		self:Print(string.format(L["Incomplete scans logged: %d (newest last; /lnav status log shows all)"], #log))
+		for i = all and 1 or math.max(1, #log - 4), #log do
+			local entry = log[i]
+			self:Print(string.format(L["  %s build %s: %s"], stamp(entry.t), tostring(entry.build), entry.reason))
+		end
+	end
 end
 
 -- Planner ------------------------------------------------------------------------------------------
 
-local function missingText(missing)
-	return string.format(L["plan.missing." .. missing.kind], missing.n)
-end
-
-local function whyText(why)
-	local parts = {}
-	for _, key in ipairs(why or {}) do parts[#parts + 1] = L["plan.why." .. key] end
-	return table.concat(parts, ", ")
-end
-
-local function dataText(card)
-	local text = L["plan.data." .. card.dataState]
-	if card.dataState == "stale" then text = text .. " " .. stamp(card.capturedAt) end
-	return text
+local function joinParts(parts)
+	local out = {}
+	for _, part in ipairs(parts) do if part ~= "" then out[#out + 1] = part end end
+	return table.concat(out, " - ")
 end
 
 function Core:AchievementName(id)
@@ -256,8 +311,87 @@ function Core:BuildPlanInput()
 	return {
 		definitions = def, catalogue = self.catalogue, account = profile.account, characters = profile.characters,
 		currentChar = self.currentKey or Provider.readCharacter().key, location = self.location, trees = self.trees,
-		settings = profile.settings, goal = profile.goal, states = self.states,
+		settings = profile.settings, goal = profile.goal, states = self.states, pinned = profile.pinned, now = Provider.serverTime(),
 	}
+end
+
+-- R2/D3: the single replan path. A planner error keeps the last good result; the UI shows the error state.
+-- While data is loading the last good result stays on screen (with its date) instead of an empty card list.
+function Core:Replan(event)
+	local ok, result = pcall(function()
+		if self.forcePlanError then error("forced planner error (/lnav debug planerror)") end
+		return Planner.plan(self:BuildPlanInput())
+	end)
+	if ok then
+		self.planError = nil
+		if result.status == "loading" and self.lastResult and self.lastResult.status ~= "loading" then
+			self.loadingKept = true
+		else
+			self.lastResult, self.lastResultAt, self.loadingKept = result, Provider.serverTime(), false
+		end
+	else
+		self.planError = tostring(result)
+		if not self.shownErrors.planError then
+			self.shownErrors.planError = true
+			self:Print(string.format(L["Planner error: %s"], self.planError))
+		end
+	end
+	self:RenderUI(event)
+	local profile = self.db.profile
+	if ok and not profile.seenIntro and result.status ~= "loading" and ns.UI and ns.UI.Show then
+		profile.seenIntro = true -- first start only: the overlay opens once by itself
+		self:CallUI(ns.UI.Show)
+	end
+end
+
+function Core:CallUI(fn, ...)
+	local good, err = pcall(fn, ...)
+	if not good and not self.shownErrors.ui then
+		self.shownErrors.ui = true
+		self:Print("UI error: " .. tostring(err))
+	end
+	return good
+end
+
+-- Everything the overlay needs; UI reads Core state only through this payload (and the helpers it gets in Init).
+function Core:RenderUI(event)
+	if not (ns.UI and ns.UI.Render) then return end
+	self:CallUI(ns.UI.Render, {
+		result = self.lastResult, planError = self.planError, loadingKept = self.loadingKept, resultAt = self.lastResultAt,
+		states = self.states, catalogue = self.catalogue, profile = self.db.profile,
+		currentKey = self.currentKey or Provider.readCharacter().key,
+		scanning = self.scan ~= nil or self.pollTimer ~= nil,
+		combatPending = self.pendingScan == true or (self.scan ~= nil and self.scan.paused == true),
+		incomplete = self.lastReported, completed = event, now = Provider.serverTime(),
+	})
+end
+
+-- Pin/unpin one card (Model.togglePin); spend/chooseGoal cards carry no achievement and cannot be pinned.
+function Core:TogglePin(card)
+	if type(card) ~= "table" or card.action ~= "pin" then return end
+	Model.togglePin(self.db.profile, card, Provider.serverTime())
+	self:Replan()
+end
+
+function Core:Unpin()
+	self.db.profile.pinned = nil
+	self:Replan()
+end
+
+function Core:ResetPositions()
+	local ui = self.db.profile.ui
+	for name, default in pairs(UI_DEFAULTS) do
+		ui[name] = ui[name] or {}
+		for _, key in ipairs({ "point", "x", "y" }) do ui[name][key] = default[key] end
+	end
+	if ns.UI and ns.UI.ApplyPositions then self:CallUI(ns.UI.ApplyPositions) end
+	self:Print(L["Positions reset."])
+end
+
+function Core:SetTrackerLocked(locked)
+	self.db.profile.ui.tracker.locked = locked
+	self:Print(L[locked and "Tracker locked." or "Tracker unlocked."])
+	if ns.UI and ns.UI.ApplyPositions then self:CallUI(ns.UI.ApplyPositions) end
 end
 
 function Core:PrintPlan()
@@ -269,6 +403,7 @@ function Core:PrintPlan()
 	elseif goal.type == "node" then
 		if result.goal.need then self:Print(string.format(L["plan.header.node"], goal.nodeID or 0, result.goal.need))
 		else self:Print(string.format(L["plan.header.nodeUnknown"], goal.nodeID or 0)) end
+	elseif goal.type == "renown" then self:Print(string.format(L["plan.header.renown"], goal.level or 0, result.goal.remaining or 0))
 	elseif goal.type == "challenge" then self:Print(string.format(L["plan.header.challenge"], goal.id or 0)) end
 	if result.goal.available and result.goal.remaining and result.goal.remaining > 0 then
 		self:Print(string.format(L["plan.goal.remaining"], result.goal.remaining, result.goal.available))
@@ -290,13 +425,14 @@ function Core:PrintPlan()
 			elseif card.action == "chooseGoal" then
 				self:Print(L["plan.card.chooseGoal"])
 			else
-				self:Print(string.format(L["plan.card.line"], i, self:AchievementName(card.achievementID), card.charKey,
-					L["plan.contribution." .. card.contribution], missingText(card.missing), whyText(card.why), dataText(card)))
+				local name = self:AchievementName(card.achievementID)
+				local parts = { Text.missing(card), Text.contribution(card, name), table.concat(Text.why(card), ", "), Text.data(card) }
+				self:Print(string.format(L["plan.card.line"], i, name, Text.name(card.charKey), joinParts(parts)))
 			end
 		end
 		for _, alt in ipairs(result.alternatives) do
-			self:Print(string.format(L["plan.card.alt"], self:AchievementName(alt.achievementID), alt.charKey,
-				missingText(alt.missing), dataText(alt)))
+			self:Print(string.format(L["plan.card.alt"], self:AchievementName(alt.achievementID), Text.name(alt.charKey),
+				joinParts({ Text.missing(alt), Text.data(alt) })))
 		end
 	end
 	for _, opp in ipairs(result["local"]) do
@@ -310,6 +446,9 @@ function Core:GoalProblem(goal)
 	if goal.type == "points" then
 		if goal.need % 1 ~= 0 or goal.need < 1 then return "needInvalid" end
 		if goal.need > def.maxPoints then return "needAbove", def.maxPoints end
+	elseif goal.type == "renown" then
+		if goal.level % 1 ~= 0 or goal.level < 1 then return "needInvalid" end
+		if goal.level > def.maxRenown then return "needAbove", def.maxRenown end
 	elseif goal.type == "challenge" and self.catalogue then
 		local ach = self.catalogue.achievements[goal.id]
 		if not ach then return "challengeUnknown" end
@@ -333,8 +472,10 @@ function Core:SetGoal(kind, a, b)
 	if kind == "clear" then
 		profile.goal = nil
 		self:Print(L["Goal cleared."])
+		self:Replan()
 		return
 	elseif n and kind == "points" then goal = { type = "points", need = n }
+	elseif n and kind == "renown" then goal = { type = "renown", level = n }
 	elseif n and kind == "challenge" then goal = { type = "challenge", id = n }
 	elseif n and kind == "node" then goal = { type = "node", nodeID = n, ranks = m }
 	end
@@ -346,9 +487,10 @@ function Core:SetGoal(kind, a, b)
 		else
 			profile.goal = goal
 			self:Print(L["Goal set."])
+			self:Replan()
 		end
 	else
-		self:Print(L["Usage: /lnav goal points N | challenge ID | node ID [ranks] | clear"])
+		self:Print(L["Usage: /lnav goal points N | renown N | challenge ID | node ID [ranks] | clear"])
 	end
 end
 
@@ -360,14 +502,27 @@ function Core:SetSetting(name, value)
 	local settings = self.db.profile.settings
 	if name == "switch" then settings.allowCharacterSwitch = flag else settings.activities[name] = flag end
 	self:Print(string.format(L["Setting %s: %s"], name, flag and L["on"] or L["off"]))
+	self:Replan()
 end
 
 function Core:OnSlash(input)
 	local command = string.lower(string.match(input or "", "^%s*(%S*)") or "")
 	if command == "diag" then
 		if ns.Diag and ns.Diag.HandleSlash then ns.Diag.HandleSlash(input) end
-	elseif command == "status" or command == "" then
-		self:PrintStatus()
+	elseif command == "" then
+		if ns.UI and ns.UI.Toggle then self:CallUI(ns.UI.Toggle) else self:PrintStatus() end
+	elseif command == "status" then
+		self:PrintStatus(string.lower(input):match("^%s*%S+%s+(%S+)") == "log")
+	elseif command == "unlock" or command == "lock" then
+		self:SetTrackerLocked(command == "lock")
+	elseif command == "reset" then
+		self:ResetPositions()
+	elseif command == "debug" then -- dev aid: exercises the planner-error state of the UI
+		if string.lower(input):match("^%s*%S+%s+(%S+)") == "planerror" then
+			self.forcePlanError = not self.forcePlanError
+			self:Print("planerror " .. (self.forcePlanError and "on" or "off"))
+			self:Replan()
+		end
 	elseif command == "plan" then
 		self:PrintPlan()
 	elseif command == "goal" then
@@ -380,6 +535,6 @@ function Core:OnSlash(input)
 		self:Print(L["Refresh started."])
 		if self.pollTimer then self:CheckReady() elseif not Provider.isReady() then self:StartPoll() else self:StartScan() end
 	else
-		self:Print(L["Use /lnav status, /lnav refresh, /lnav plan, /lnav goal, /lnav set or /lnav diag."])
+		self:Print(L["Use /lnav (overlay), /lnav status, /lnav refresh, /lnav plan, /lnav goal, /lnav set, /lnav unlock, /lnav lock, /lnav reset or /lnav diag."])
 	end
 end
