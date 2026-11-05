@@ -41,7 +41,7 @@ Everything is available from the panel and the minimap button. Slash commands (`
 
 ## Installation
 
-- Once released: install from CurseForge or Wago with your addon manager.
+- Once released: install from CurseForge with your addon manager.
 - Manually: clone this repository into `Interface/AddOns/LegacyNavigator` and run `tools/fetch-libs.sh` to fetch the libraries. It needs `git` and `svn` (for LibDBIcon).
 
 ## Notes & limitations

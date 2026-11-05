@@ -3,7 +3,8 @@
 ## Notes: Plans your next Legacy points: goals, best next steps for the current character and alts, tracker and Legacy-window integration.
 ## Notes-deDE: Plant deine nächsten Legacy-Punkte: Ziele, beste nächste Schritte für den aktuellen Charakter und Twinks, Tracker und Anbindung ans Legacy-Fenster.
 ## Author: sb
-## Version: 0.1.0
+## Version: @project-version@
+## X-Curse-Project-ID: 1728388
 ## OptionalDeps: EllesmereUI
 ## SavedVariables: LegacyNavigatorDiagDB, LegacyNavigatorDB
 ## IconTexture: Interface\AddOns\LegacyNavigator\Textures\icon
